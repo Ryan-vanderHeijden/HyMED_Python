@@ -4,7 +4,7 @@
 .LSOverride
 
 # Folders
-/inst
+/inst/
 
 # Python
 __pycache__/
