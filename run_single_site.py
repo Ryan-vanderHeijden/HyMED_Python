@@ -31,7 +31,7 @@ from hymed import (
 WORKERS = 16
 
 
-def run_site_eval(site_name: str, data_path: str, model: str) -> None:
+def run_site_eval(site_name: str, data_path: str, model: str, out_path: str) -> None:
     """
     Run full drought evaluation for a single site.
 
@@ -40,9 +40,11 @@ def run_site_eval(site_name: str, data_path: str, model: str) -> None:
     site_name : str
         USGS station ID (matches CSV filename without extension).
     data_path : str
-        Path to the model data directory (e.g. 'inst/extdata/nhm').
+        Path to the model data directory containing input_data/ (may be read-only).
     model : str
         Model name string (e.g. 'nhm' or 'nwm').
+    out_path : str
+        Path to write output CSVs (must be writable).
     """
     # Read input data
     df = pd.read_csv(
@@ -67,7 +69,7 @@ def run_site_eval(site_name: str, data_path: str, model: str) -> None:
     # Calculate percentiles
     df_pct = calculate_site_percentiles(df, site_name, units="cms")
     df_pct.to_csv(
-        os.path.join(data_path, "percentiles", f"{site_name}.csv"), index=False
+        os.path.join(out_path, "percentiles", f"{site_name}.csv"), index=False
     )
 
     # Calculate drought events and properties
@@ -95,65 +97,75 @@ def run_site_eval(site_name: str, data_path: str, model: str) -> None:
     # Cohen's kappa
     df_kappa = site_cohens_kappa(df_bool_threshold_only, site_name)
     df_kappa.to_csv(
-        os.path.join(data_path, "kappa", f"kappa_{site_name}.csv"), index=False
+        os.path.join(out_path, "kappa", f"kappa_{site_name}.csv"), index=False
     )
 
     # Spearman's rho
     df_spear = site_spearmans(df_pct, site_name)
     df_spear.to_csv(
-        os.path.join(data_path, "spearmans", f"spearman_{site_name}.csv"), index=False
+        os.path.join(out_path, "spearmans", f"spearman_{site_name}.csv"), index=False
     )
 
     # Bias and SD distribution
     df_bias_dist = site_bias_distribution(df_pct, site_name)
     df_bias_dist.to_csv(
-        os.path.join(data_path, "bias_dist", f"bias_dist_{site_name}.csv"), index=False
+        os.path.join(out_path, "bias_dist", f"bias_dist_{site_name}.csv"), index=False
     )
 
     # Annual event-based metrics
     df_ann_eval = site_annual_signatures(df_annual_stats, site_name)
     df_ann_eval.to_csv(
-        os.path.join(data_path, "ann_eval", f"ann_eval_{site_name}.csv"), index=False
+        os.path.join(out_path, "ann_eval", f"ann_eval_{site_name}.csv"), index=False
     )
 
 
 def _run_site_eval_worker(args: tuple) -> None:
     """Multiprocessing worker: unpacks args and calls run_site_eval."""
-    site_name, data_path, model, i = args
+    site_name, data_path, out_path, model, i = args
     print(f"site: {site_name} - iteration: {i}", flush=True)
-    run_site_eval(site_name=site_name, data_path=data_path, model=model)
+    run_site_eval(site_name=site_name, data_path=data_path, model=model, out_path=out_path)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run HyMED drought evaluation.")
-    parser.add_argument("--model", default="nhm", help="Model name (e.g. nhm, nwm)")
+    parser.add_argument("--model", default="nwm", help="Model name (e.g. nwm)")
     parser.add_argument(
         "--data-path",
         default=None,
-        help="Path to model data directory containing input_data/. "
+        help="Path to model data directory containing input_data/ (may be read-only). "
              "Defaults to inst/extdata/<model>.",
     )
     args = parser.parse_args()
 
     model_name = args.model
     data_path = args.data_path or os.path.join("inst", "extdata", model_name)
+    # Allow passing the input_data subfolder directly; normalize to parent
+    if os.path.basename(data_path.rstrip("/\\")) == "input_data":
+        data_path = os.path.dirname(data_path.rstrip("/\\"))
+    out_path = os.path.join("inst", "extdata", model_name)
 
     # Create output folders if needed
     for folder in ["percentiles", "kappa", "spearmans", "bias_dist", "ann_eval"]:
-        os.makedirs(os.path.join(data_path, folder), exist_ok=True)
+        os.makedirs(os.path.join(out_path, folder), exist_ok=True)
 
     # Get list of all sites from input_data directory
-    input_files = sorted(glob.glob(os.path.join(data_path, "input_data", "*.csv")))
+    input_dir = os.path.join(data_path, "input_data")
+    input_files = sorted(glob.glob(os.path.join(input_dir, "*.csv")))
+    if not input_files:
+        raise FileNotFoundError(
+            f"No CSV files found in {input_dir!r}. "
+            "Check that --data-path is accessible from this machine."
+        )
     site_list = [os.path.splitext(os.path.basename(f))[0] for f in input_files]
 
     # Run evaluation for each site in parallel
     n_workers = WORKERS
-    worker_args = [(s, data_path, model_name, i) for i, s in enumerate(site_list, start=1)]
+    worker_args = [(s, data_path, out_path, model_name, i) for i, s in enumerate(site_list, start=1)]
     with multiprocessing.Pool(processes=n_workers) as pool:
         pool.map(_run_site_eval_worker, worker_args)
 
     # ---- Gather and reshape kappa data to long format ----
-    df_kappa = gather_data("kappa", data_path)
+    df_kappa = gather_data("kappa", out_path)
     df_kappa_long = df_kappa.melt(
         id_vars=["pct_type", "threshold", "site"],
         value_vars=["mod_kappa", "mod_classification_accuracy"],
@@ -166,10 +178,10 @@ if __name__ == "__main__":
     df_kappa_long["pct_type"] = df_kappa_long["pct_type"].replace(
         {"jd": "variable", "site": "fixed"}
     )
-    df_kappa_long.to_csv(os.path.join(data_path, "kappa_long.csv"), index=False)
+    df_kappa_long.to_csv(os.path.join(out_path, "kappa_long.csv"), index=False)
 
     # ---- Gather and reshape Spearman's data to long format ----
-    df_spearmans = gather_data("spearmans", data_path)
+    df_spearmans = gather_data("spearmans", out_path)
     df_spearmans = df_spearmans.drop(columns=["quant_length"], errors="ignore")
     df_spearmans = df_spearmans.rename(columns={"rho_obs_mod": "mod_rho_obs"})
     df_spear_long = df_spearmans.melt(
@@ -183,7 +195,7 @@ if __name__ == "__main__":
     df_spear_long = df_spear_long.drop(columns=["temp"])
 
     # ---- Gather and reshape bias/distribution data to long format ----
-    df_bias = gather_data("bias_dist", data_path)
+    df_bias = gather_data("bias_dist", out_path)
     df_bias_long = df_bias.melt(
         id_vars=["thresh", "pct_type", "site"],
         value_vars=["mod_bias", "mod_pct_bias", "mod_sd_ratio"],
@@ -204,11 +216,11 @@ if __name__ == "__main__":
         {"weibull_site": "fixed", "weibull_jd": "variable"}
     )
     df_spear_bias_dist.to_csv(
-        os.path.join(data_path, "spear_bias_dist_long.csv"), index=False
+        os.path.join(out_path, "spear_bias_dist_long.csv"), index=False
     )
 
     # ---- Gather and reshape annual evaluation data to long format ----
-    df_ann = gather_data("ann_eval", data_path)
+    df_ann = gather_data("ann_eval", out_path)
     # Pivot value columns to long format (NSE_mod through nmae_mod)
     value_cols = [c for c in df_ann.columns if c.endswith("_mod")]
     id_cols = [c for c in df_ann.columns if c not in value_cols]
@@ -224,4 +236,4 @@ if __name__ == "__main__":
     df_ann_long["source"] = split[1]
     df_ann_long = df_ann_long.drop(columns=["temp"])
     df_ann_long["type"] = df_ann_long["type"].replace({"jd": "variable", "site": "fixed"})
-    df_ann_long.to_csv(os.path.join(data_path, "ann_eval_long.csv"), index=False)
+    df_ann_long.to_csv(os.path.join(out_path, "ann_eval_long.csv"), index=False)
