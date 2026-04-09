@@ -10,6 +10,7 @@ Usage:
 
 import os
 import glob
+import argparse
 import multiprocessing
 
 import numpy as np
@@ -26,6 +27,8 @@ from hymed import (
     site_annual_signatures,
     gather_data,
 )
+
+WORKERS = 16
 
 
 def run_site_eval(site_name: str, data_path: str, model: str) -> None:
@@ -122,11 +125,18 @@ def _run_site_eval_worker(args: tuple) -> None:
 
 
 if __name__ == "__main__":
-    # Update model name to match the data location
-    model_name = "nhm"
+    parser = argparse.ArgumentParser(description="Run HyMED drought evaluation.")
+    parser.add_argument("--model", default="nhm", help="Model name (e.g. nhm, nwm)")
+    parser.add_argument(
+        "--data-path",
+        default=None,
+        help="Path to model data directory containing input_data/. "
+             "Defaults to inst/extdata/<model>.",
+    )
+    args = parser.parse_args()
 
-    # Path to the data
-    data_path = os.path.join("inst", "extdata", model_name)
+    model_name = args.model
+    data_path = args.data_path or os.path.join("inst", "extdata", model_name)
 
     # Create output folders if needed
     for folder in ["percentiles", "kappa", "spearmans", "bias_dist", "ann_eval"]:
@@ -137,7 +147,7 @@ if __name__ == "__main__":
     site_list = [os.path.splitext(os.path.basename(f))[0] for f in input_files]
 
     # Run evaluation for each site in parallel
-    n_workers = max(1, multiprocessing.cpu_count() - 1)
+    n_workers = WORKERS
     worker_args = [(s, data_path, model_name, i) for i, s in enumerate(site_list, start=1)]
     with multiprocessing.Pool(processes=n_workers) as pool:
         pool.map(_run_site_eval_worker, worker_args)
