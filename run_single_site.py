@@ -87,6 +87,9 @@ def run_site_eval(site_name: str, data_path: str, model: str, out_path: str) -> 
     )
     df_properties = df_both[0]
     df_annual_stats = df_both[1]
+    df_properties.to_csv(
+        os.path.join(data_path, "drought_props", f"{site_name}.csv"), index=False
+    )
 
     # Calculate drought booleans (with pooling - for reference)
     df_bool = calculate_site_boolean(df_properties, site_name, sdate, edate)
@@ -145,7 +148,7 @@ if __name__ == "__main__":
     out_path = os.path.join("inst", "extdata", model_name)
 
     # Create output folders if needed
-    for folder in ["percentiles", "kappa", "spearmans", "bias_dist", "ann_eval"]:
+    for folder in ["percentiles", "drought_props", "kappa", "spearmans", "bias_dist", "ann_eval"]:
         os.makedirs(os.path.join(out_path, folder), exist_ok=True)
 
     # Get list of all sites from input_data directory
