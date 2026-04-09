@@ -10,6 +10,7 @@ Usage:
 
 import os
 import glob
+import multiprocessing
 
 import numpy as np
 import pandas as pd
@@ -113,6 +114,13 @@ def run_site_eval(site_name: str, data_path: str, model: str) -> None:
     )
 
 
+def _run_site_eval_worker(args: tuple) -> None:
+    """Multiprocessing worker: unpacks args and calls run_site_eval."""
+    site_name, data_path, model, i = args
+    print(f"site: {site_name} - iteration: {i}", flush=True)
+    run_site_eval(site_name=site_name, data_path=data_path, model=model)
+
+
 if __name__ == "__main__":
     # Update model name to match the data location
     model_name = "nhm"
@@ -128,10 +136,11 @@ if __name__ == "__main__":
     input_files = sorted(glob.glob(os.path.join(data_path, "input_data", "*.csv")))
     site_list = [os.path.splitext(os.path.basename(f))[0] for f in input_files]
 
-    # Run evaluation for each site
-    for i, site_name in enumerate(site_list, start=1):
-        print(f"site: {site_name} - iteration: {i}")
-        run_site_eval(site_name=site_name, data_path=data_path, model=model_name)
+    # Run evaluation for each site in parallel
+    n_workers = max(1, multiprocessing.cpu_count() - 1)
+    worker_args = [(s, data_path, model_name, i) for i, s in enumerate(site_list, start=1)]
+    with multiprocessing.Pool(processes=n_workers) as pool:
+        pool.map(_run_site_eval_worker, worker_args)
 
     # ---- Gather and reshape kappa data to long format ----
     df_kappa = gather_data("kappa", data_path)
