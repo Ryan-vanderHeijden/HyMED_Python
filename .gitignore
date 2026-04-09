@@ -3,6 +3,9 @@
 .AppleDouble
 .LSOverride
 
+# Folders
+/inst
+
 # Python
 __pycache__/
 *.py[cod]
