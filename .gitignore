@@ -4,8 +4,8 @@
 .LSOverride
 
 # Folders
-/inst/
-
+inst/
+concat/
 # Python
 __pycache__/
 *.py[cod]

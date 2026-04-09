@@ -46,10 +46,10 @@ def merge_csv_files(input_folder, output_file, file_pattern='*.csv'):
 
 # --- Configuration ---
 # Set the folder where your CSVs are located (e.g., 'data' folder)
-INPUT_DIRECTORY = 'Processed/VT_gages/drought_props/' 
+INPUT_DIRECTORY = 'inst/extdata/obs_ref/drought_props/' 
 
 # Set the name for your final merged file
-OUTPUT_FILENAME = 'VT_drought_props_long.csv'
+OUTPUT_FILENAME = 'obs_drought_props_long.csv'
 
 # Run the merge function
 merge_csv_files(INPUT_DIRECTORY, OUTPUT_FILENAME)
