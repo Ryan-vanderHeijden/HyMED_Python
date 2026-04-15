@@ -27,5 +27,10 @@ def gather_data(folder_name: str, data_path: str) -> pd.DataFrame:
     """
     directory = os.path.join(data_path, folder_name)
     files = sorted(glob.glob(os.path.join(directory, "*.csv")))
-    dfs = [pd.read_csv(f, dtype={"site": str}) for f in files]
+    dfs = []
+    for f in files:
+        try:
+            dfs.append(pd.read_csv(f, dtype={"site": str}))
+        except pd.errors.EmptyDataError:
+            pass
     return pd.concat(dfs, ignore_index=True)

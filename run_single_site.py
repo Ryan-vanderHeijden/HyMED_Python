@@ -149,6 +149,11 @@ if __name__ == "__main__":
         default=None,
         help="Path to write output CSVs. Defaults to inst/extdata/<model>.",
     )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Skip sites that already have an ann_eval output file.",
+    )
     args = parser.parse_args()
 
     model_name = args.model
@@ -171,6 +176,16 @@ if __name__ == "__main__":
             "Check that --data-path is accessible from this machine."
         )
     site_list = [os.path.splitext(os.path.basename(f))[0] for f in input_files]
+
+    # Skip sites that already have output
+    if args.skip_existing:
+        ann_eval_dir = os.path.join(out_path, "ann_eval")
+        before = len(site_list)
+        site_list = [
+            s for s in site_list
+            if not os.path.exists(os.path.join(ann_eval_dir, f"ann_eval_{s}.csv"))
+        ]
+        print(f"Skipping {before - len(site_list)} existing sites, {len(site_list)} remaining.", flush=True)
 
     # Filter to reference sites if requested
     if args.ref_sites:
