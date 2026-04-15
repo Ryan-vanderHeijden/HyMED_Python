@@ -144,6 +144,11 @@ if __name__ == "__main__":
         help="Path to a CSV with columns 'site' and 'Ref'. "
              "If provided, only sites where Ref==1 are evaluated.",
     )
+    parser.add_argument(
+        "--out-path",
+        default=None,
+        help="Path to write output CSVs. Defaults to inst/extdata/<model>.",
+    )
     args = parser.parse_args()
 
     model_name = args.model
@@ -151,7 +156,7 @@ if __name__ == "__main__":
     # Allow passing the input_data subfolder directly; normalize to parent
     if os.path.basename(data_path.rstrip("/\\")) == "input_data":
         data_path = os.path.dirname(data_path.rstrip("/\\"))
-    out_path = os.path.join("inst", "extdata", model_name)
+    out_path = args.out_path or os.path.join("inst", "extdata", model_name)
 
     # Create output folders if needed
     for folder in ["percentiles", "drought_props", "kappa", "spearmans", "bias_dist", "ann_eval"]:
