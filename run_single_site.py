@@ -138,6 +138,12 @@ if __name__ == "__main__":
         help="Path to model data directory containing input_data/ (may be read-only). "
              "Defaults to inst/extdata/<model>.",
     )
+    parser.add_argument(
+        "--ref-sites",
+        default=None,
+        help="Path to a CSV with columns 'site' and 'Ref'. "
+             "If provided, only sites where Ref==1 are evaluated.",
+    )
     args = parser.parse_args()
 
     model_name = args.model
@@ -160,6 +166,13 @@ if __name__ == "__main__":
             "Check that --data-path is accessible from this machine."
         )
     site_list = [os.path.splitext(os.path.basename(f))[0] for f in input_files]
+
+    # Filter to reference sites if requested
+    if args.ref_sites:
+        ref_df = pd.read_csv(args.ref_sites, dtype={"site": str})
+        ref_sites = set(ref_df.loc[ref_df["Ref"] == 1, "site"].tolist())
+        site_list = [s for s in site_list if s in ref_sites]
+        print(f"Filtered to {len(site_list)} reference sites.", flush=True)
 
     # Run evaluation for each site in parallel
     n_workers = WORKERS
