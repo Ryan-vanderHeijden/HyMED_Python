@@ -28,7 +28,7 @@ from hymed import (
     gather_data,
 )
 
-WORKERS = 16
+WORKERS = int(os.environ.get("HYMED_WORKERS", "16"))
 
 
 def run_site_eval(site_name: str, data_path: str, model: str, out_path: str) -> None:
