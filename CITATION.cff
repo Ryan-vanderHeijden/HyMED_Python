@@ -1,0 +1,60 @@
+cff-version: 1.2.0
+title: "HyMED Python — Hydrologic Model Evaluation for Drought (Python translation)"
+message: >-
+  If you use this software, please cite both this Python translation and the
+  original HyMED R package (Simeone and Foks, 2024) referenced below.
+type: software
+authors:
+  - given-names: Ryan
+    family-names: van der Heijden
+    email: rvanderh@uvm.edu
+repository-code: "https://github.com/Ryan-vanderHeijden/HyMED_Python"
+abstract: >-
+  A Python translation of the HyMED R package (Simeone and Foks, 2024) for
+  evaluating hydrologic model streamflow output during periods of drought. It
+  computes Weibull drought percentiles (with variable Julian-day or fixed
+  thresholds and the Consecutive Dry Period Method for zero-flow periods)
+  and a suite of comparison metrics between modeled and observed streamflow
+  drought, including Cohen's kappa, Spearman's rho, percent bias, SD ratio, and
+  annual drought signature metrics. Outputs are validated against the original R
+  implementation.
+keywords:
+  - hydrology
+  - streamflow
+  - drought
+  - model evaluation
+license: MIT
+version: 1.0.0
+date-released: "2026"
+references:
+  - type: software
+    title: "HyMED—Hydrologic Model Evaluation for Drought: R package version 1.0.0"
+    authors:
+      - given-names: Caelan E.
+        family-names: Simeone
+      - given-names: Sydney S.
+        family-names: Foks
+    year: 2024
+    notes: "U.S. Geological Survey software release"
+    doi: 10.5066/P1TLARC5
+  - type: article
+    title: >-
+      Evaluating Hydrologic Model Performance for Characterizing Streamflow
+      Drought in the Conterminous United States
+    authors:
+      - given-names: Caelan E.
+        family-names: Simeone
+      - given-names: Sydney S.
+        family-names: Foks
+      - given-names: Erin
+        family-names: Towler
+      - given-names: Timothy O.
+        family-names: Hodson
+      - given-names: Thomas
+        family-names: Over
+    journal: Water
+    volume: 16
+    issue: 20
+    start: 2996
+    year: 2024
+    doi: 10.3390/w16202996
