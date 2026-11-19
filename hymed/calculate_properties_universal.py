@@ -40,34 +40,18 @@ from typing import List, Tuple
 import numpy as np
 import pandas as pd
 
+from ._util import climate_year, decimal_date, rleid
+from .config import (
+    MIN_EVENT_DURATION, PCT_FLOW_COLS, PCT_TYPES, POOLING_SEVERITY_RATIO, THRESHOLDS,
+)
+
 # Single baseline threshold (percentile) used to identify drought onset/boundaries
 # and against which all characteristics are computed.
 BASELINE_THRESHOLD = 30
 
 # Severity classification bins, ordered from most to least extreme. An event is
 # assigned the first (smallest) bin whose value is >= the minimum percentile reached.
-CLASS_BINS = [5, 10, 20, 30]
-
-
-def _rleid(series: pd.Series) -> pd.Series:
-    """Assign a group id that increments each time the value changes."""
-    return (series != series.shift()).cumsum()
-
-
-def _classify(min_pct: float) -> int:
-    """Classify an event by the minimum percentile it reached.
-
-    Returns the smallest classification bin that the minimum percentile falls within,
-    i.e. the most extreme class the event reaches:
-        min_pct <= 5  -> 5
-        min_pct <= 10 -> 10
-        min_pct <= 20 -> 20
-        otherwise     -> 30
-    """
-    for c in CLASS_BINS:
-        if min_pct <= c:
-            return c
-    return CLASS_BINS[-1]
+CLASS_BINS = THRESHOLDS
 
 
 def calculate_site_properties_universal(
@@ -115,17 +99,14 @@ def calculate_site_properties_universal(
         denotes the severity classification.
     """
     if percent_type_list is None:
-        percent_type_list = [
-            "weibull_jd_obs", "weibull_jd_mod",
-            "weibull_site_obs", "weibull_site_mod",
-        ]
+        percent_type_list = PCT_TYPES
     if flow_name_list is None:
-        flow_name_list = ["q_obs", "q_mod", "q_obs", "q_mod"]
+        flow_name_list = PCT_FLOW_COLS
     if class_bins is None:
         class_bins = list(CLASS_BINS)
 
-    inter_event_duration = 5
-    pooling_severity_ratio = 0.1
+    inter_event_duration = MIN_EVENT_DURATION
+    pooling_severity_ratio = POOLING_SEVERITY_RATIO
 
     low_flow_list = []
     drought_event_list = []
@@ -133,6 +114,7 @@ def calculate_site_properties_universal(
     cy_range = list(range(start_cy, end_cy + 1))
 
     def classify(min_pct: float) -> int:
+        """Most extreme class reached: the smallest bin >= min_pct (else the last bin)."""
         for c in class_bins:
             if min_pct <= c:
                 return c
@@ -151,7 +133,7 @@ def calculate_site_properties_universal(
 
         # Sort and assign drought_id via rleid
         df_sub = df_sub.sort_values(["site", "dt"]).reset_index(drop=True)
-        df_sub["drought_id"] = _rleid(df_sub["less_than_thresh"])
+        df_sub["drought_id"] = rleid(df_sub["less_than_thresh"])
 
         # Compute flow threshold (quantile of flow_value at baseline/100) per group
         group_col = "jd" if group_dim == "jd" else "site"
@@ -271,7 +253,7 @@ def calculate_site_properties_universal(
             ~df_sub["feature_event_id"].isin(ic_to_remove["feature_event_id"])
         ].copy()
         df_pooled = df_pooled.sort_values(["site", "dt"]).reset_index(drop=True)
-        df_pooled["drought_id"] = _rleid(df_pooled["less_than_thresh"])
+        df_pooled["drought_id"] = rleid(df_pooled["less_than_thresh"])
 
         # Keep only drought (below baseline) periods
         df_events = df_pooled[df_pooled["less_than_thresh"] == 1].copy()
@@ -316,11 +298,7 @@ def calculate_site_properties_universal(
         if event_stats.empty:
             continue
 
-        event_stats["cy"] = np.where(
-            event_stats["start"].dt.month >= 4,
-            event_stats["start"].dt.year + 1,
-            event_stats["start"].dt.year,
-        )
+        event_stats["cy"] = climate_year(event_stats["start"])
         # 'threshold' column holds the severity classification (mirrors output format).
         event_stats["threshold"] = event_stats["classification"].astype(int)
         event_stats = event_stats.drop(columns=["classification"])
@@ -406,8 +384,8 @@ def _compute_longest_event_cols(
             "total_drought_flow_volume_cms": grp["flow_volume_cms"].sum(),
             "longest_drought_flow_volume_cms": grp["flow_volume_cms"].max(),
             "start_day_of_longest_drought": start_day,
-            "start_date_of_longest_drought": _decimal_date_scalar(start_longest),
-            "end_date_of_longest_drought": _decimal_date_scalar(end_longest),
+            "start_date_of_longest_drought": decimal_date(start_longest),
+            "end_date_of_longest_drought": decimal_date(end_longest),
             "end_day_of_longest_drought": end_day,
         })
 
@@ -470,8 +448,3 @@ def _compute_longest_event_cols(
     )[["site", "cy", "measure", "value", "threshold", "pct_type"]]
 
     return long_df
-
-
-def _decimal_date_scalar(dt) -> float:
-    """Convert a single datetime to decimal date."""
-    return dt.year + (dt.dayofyear - 1) / 365.0

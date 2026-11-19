@@ -32,8 +32,8 @@ def setup_individual_files(
     start_cy, end_cy : int
         Climate year range for filtering.
     """
-    df1 = pd.read_csv(input_path_model1, delim_whitespace=True, dtype={"siteno": str})
-    df2 = pd.read_csv(input_path_model2, delim_whitespace=True, dtype={"siteno": str})
+    df1 = pd.read_csv(input_path_model1, sep=r"\s+", dtype={"siteno": str})
+    df2 = pd.read_csv(input_path_model2, sep=r"\s+", dtype={"siteno": str})
 
     # Validate
     for df, label in [(df1, "model1"), (df2, "model2")]:

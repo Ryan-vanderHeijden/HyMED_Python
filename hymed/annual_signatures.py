@@ -9,15 +9,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-
-def _nse(sim: np.ndarray, obs: np.ndarray) -> float:
-    """Nash-Sutcliffe Efficiency."""
-    mask = ~np.isnan(obs) & ~np.isnan(sim)
-    obs, sim = obs[mask], sim[mask]
-    denom = np.sum((obs - obs.mean()) ** 2)
-    if denom == 0:
-        return np.nan
-    return float(1.0 - np.sum((obs - sim) ** 2) / denom)
+from ._util import nse
+from .config import THRESHOLDS
 
 
 def site_annual_signatures(df_annual_stats: pd.DataFrame, site_name: str) -> pd.DataFrame:
@@ -57,7 +50,7 @@ def site_annual_signatures(df_annual_stats: pd.DataFrame, site_name: str) -> pd.
     df["source"] = split[2]
 
     # Filter to valid thresholds
-    df = df[df["threshold"].isin([5, 10, 20, 30])]
+    df = df[df["threshold"].isin(THRESHOLDS)]
 
     # Pivot wide: obs and mod as separate columns
     df_wide = df.pivot_table(
@@ -85,8 +78,8 @@ def site_annual_signatures(df_annual_stats: pd.DataFrame, site_name: str) -> pd.
             continue
 
         mean_obs = float(np.nanmean(obs_m))
-        nse_val = _nse(mod_m, obs_m)
-        pearson = float(np.corrcoef(obs_m, mod_m)[0, 1]) if len(obs_m) > 1 else np.nan
+        nse_val = nse(mod_m, obs_m)
+        pearson = float(np.corrcoef(obs_m, mod_m)[0, 1])
         spearman = float(stats.spearmanr(obs_m, mod_m).statistic)
         kendall = float(stats.kendalltau(obs_m, mod_m).statistic)
         r2 = pearson ** 2 if not np.isnan(pearson) else np.nan

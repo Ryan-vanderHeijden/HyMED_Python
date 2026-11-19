@@ -127,9 +127,13 @@ Three aggregated long-format files are also written to the model directory root:
 ```
 hymed/
 ├── __init__.py
+├── config.py                       # Shared constants (thresholds, pooling parameters, ...)
+├── _util.py                        # Shared helpers (rleid, NSE, climate/water year columns)
+├── pipeline.py                     # Full workflow used by the run_single_site*.py scripts
 ├── gather_data.py                  # Concatenate per-site CSV files from a folder
 ├── calculate_percentiles.py        # Weibull percentiles with CDPM zero-flow handling
 ├── calculate_properties.py         # Drought event identification and annual statistics
+├── calculate_properties_universal.py  # Same events at the 30th percentile, labeled by severity class
 ├── calculate_booleans.py           # Drought boolean timeseries (pooled and threshold-only)
 ├── cohens_kappa.py                 # Cohen's kappa and classification accuracy
 ├── spearmans.py                    # Spearman's rho for low-flow periods
@@ -137,6 +141,8 @@ hymed/
 ├── annual_signatures.py            # Annual drought signature evaluation metrics
 └── setup_files.py                  # Combine model files and write per-site CSVs
 run_single_site.py                  # Main workflow script
+run_single_site_universal.py        # Same workflow, universal severity classification
+tests/                              # End-to-end regression tests
 requirements.txt
 ```
 

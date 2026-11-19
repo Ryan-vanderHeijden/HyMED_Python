@@ -8,6 +8,8 @@ Translated from R/site_cohens_kappas.R.
 import pandas as pd
 from sklearn.metrics import cohen_kappa_score
 
+from .config import THRESHOLDS
+
 
 def site_cohens_kappa(df_bool: pd.DataFrame, site_name: str) -> pd.DataFrame:
     """
@@ -31,7 +33,7 @@ def site_cohens_kappa(df_bool: pd.DataFrame, site_name: str) -> pd.DataFrame:
     for percent_type in ["jd", "site"]:
         df_type = df_bool[df_bool["pct_type"].str.contains(percent_type)].copy()
 
-        for thresh in [5, 10, 20, 30]:
+        for thresh in THRESHOLDS:
             try:
                 df_thresh = df_type[df_type["threshold"] == thresh].copy()
 

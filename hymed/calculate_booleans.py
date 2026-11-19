@@ -7,8 +7,9 @@ Translated from R/calculate_site_booleans.R and R/calculate_site_booleans_thresh
 
 import itertools
 
-import numpy as np
 import pandas as pd
+
+from .config import PCT_TYPES, THRESHOLDS
 
 
 def calculate_site_boolean(
@@ -36,8 +37,6 @@ def calculate_site_boolean(
         Columns: threshold, pct_type, day, drought (bool), site.
     """
     if df_prop.empty:
-        # Return a fully False timeseries
-        all_dates = pd.date_range(start=sdate, end=edate, freq="D")
         return pd.DataFrame({
             "threshold": [],
             "pct_type": [],
@@ -94,7 +93,7 @@ def calculate_site_boolean_threshold_only(df_pct: pd.DataFrame) -> pd.DataFrame:
     pd.DataFrame
         Long-format DataFrame with columns: site, day, pct_type, threshold, drought.
     """
-    weibull_cols = ["weibull_jd_obs", "weibull_jd_mod", "weibull_site_obs", "weibull_site_mod"]
+    weibull_cols = PCT_TYPES
     df = df_pct[["site", "dt"] + weibull_cols].copy()
 
     # Melt percentile columns to long format
@@ -106,18 +105,17 @@ def calculate_site_boolean_threshold_only(df_pct: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Add boolean columns for each threshold
-    for t in [5, 10, 20, 30]:
+    for t in THRESHOLDS:
         df_long[str(t)] = df_long["pct_value"] <= t
 
     # Melt thresholds to long format
     df_bool = df_long.melt(
         id_vars=["site", "dt", "pct_type"],
-        value_vars=["5", "10", "20", "30"],
+        value_vars=[str(t) for t in THRESHOLDS],
         var_name="threshold",
         value_name="drought",
     )
     df_bool["threshold"] = df_bool["threshold"].astype(int)
-    df_bool = df_bool.drop(columns=[], errors="ignore")
     df_bool = df_bool.rename(columns={"dt": "day"})
 
     return df_bool[["site", "day", "pct_type", "threshold", "drought"]]

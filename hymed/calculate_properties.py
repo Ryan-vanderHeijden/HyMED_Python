@@ -10,15 +10,10 @@ from typing import List, Tuple
 import numpy as np
 import pandas as pd
 
-
-def _rleid(series: pd.Series) -> pd.Series:
-    """Assign a group id that increments each time the value changes."""
-    return (series != series.shift()).cumsum()
-
-
-def _decimal_date(dt: pd.Series) -> pd.Series:
-    """Approximate lubridate::decimal_date: year + (dayofyear - 1) / 365."""
-    return dt.dt.year + (dt.dt.dayofyear - 1) / 365.0
+from ._util import climate_year, decimal_date, rleid
+from .config import (
+    MIN_EVENT_DURATION, PCT_FLOW_COLS, PCT_TYPES, POOLING_SEVERITY_RATIO, THRESHOLDS,
+)
 
 
 def calculate_site_properties(
@@ -40,7 +35,7 @@ def calculate_site_properties(
     site_name : str
         Site identifier.
     thresholds : list of int
-        Percentile thresholds. Default: [5, 10, 20, 30].
+        Percentile thresholds. Default: config.THRESHOLDS.
     percent_type_list : list of str
         Percentile column names. Default: weibull_jd_obs/mod and weibull_site_obs/mod.
     flow_name_list : list of str
@@ -53,17 +48,14 @@ def calculate_site_properties(
     [df_drought_events_all, annual_stats] : list of two DataFrames
     """
     if thresholds is None:
-        thresholds = [5, 10, 20, 30]
+        thresholds = THRESHOLDS
     if percent_type_list is None:
-        percent_type_list = [
-            "weibull_jd_obs", "weibull_jd_mod",
-            "weibull_site_obs", "weibull_site_mod",
-        ]
+        percent_type_list = PCT_TYPES
     if flow_name_list is None:
-        flow_name_list = ["q_obs", "q_mod", "q_obs", "q_mod"]
+        flow_name_list = PCT_FLOW_COLS
 
-    inter_event_duration = 5
-    pooling_severity_ratio = 0.1
+    inter_event_duration = MIN_EVENT_DURATION
+    pooling_severity_ratio = POOLING_SEVERITY_RATIO
 
     low_flow_list = []
     drought_event_list = []
@@ -83,7 +75,7 @@ def calculate_site_properties(
 
             # Sort and assign drought_id via rleid
             df_sub = df_sub.sort_values(["site", "dt"]).reset_index(drop=True)
-            df_sub["drought_id"] = _rleid(df_sub["less_than_thresh"])
+            df_sub["drought_id"] = rleid(df_sub["less_than_thresh"])
 
             # Compute flow threshold (quantile of flow_value at thresh/100) per group
             if group_dim == "jd":
@@ -197,7 +189,7 @@ def calculate_site_properties(
                 ~df_sub["feature_event_id"].isin(ic_to_remove["feature_event_id"])
             ].copy()
             df_pooled = df_pooled.sort_values(["site", "dt"]).reset_index(drop=True)
-            df_pooled["drought_id"] = _rleid(df_pooled["less_than_thresh"])
+            df_pooled["drought_id"] = rleid(df_pooled["less_than_thresh"])
 
             # Keep only drought (below threshold) periods
             df_events = df_pooled[df_pooled["less_than_thresh"] == 1].copy()
@@ -238,11 +230,7 @@ def calculate_site_properties(
             if event_stats.empty:
                 continue
 
-            event_stats["cy"] = np.where(
-                event_stats["start"].dt.month >= 4,
-                event_stats["start"].dt.year + 1,
-                event_stats["start"].dt.year,
-            )
+            event_stats["cy"] = climate_year(event_stats["start"])
             event_stats["threshold"] = thresh
             event_stats["pct_type"] = percent_type
 
@@ -258,26 +246,6 @@ def calculate_site_properties(
 
     # ---- Annual aggregation of drought events → long format ----
     if not df_drought_events_all.empty:
-        drought_annual = (
-            df_drought_events_all.groupby(["site", "cy", "threshold", "pct_type"])
-            .agg(
-                total_drought_severity=("severity", "sum"),
-                total_drought_duration=("duration", "sum"),
-                number_of_drought_events=("severity", "count"),
-                largest_drought_severity=("severity", "max"),
-                longest_drought_duration=("duration", "max"),
-                total_drought_flow_volume_cms=("flow_volume_cms", "sum"),
-                longest_drought_flow_volume_cms=("flow_volume_cms", "max"),
-                _start_of_longest=("start", lambda s: s.iloc[s.reset_index(drop=True).index[
-                    df_drought_events_all.loc[s.index, "duration"].values.argmax()
-                ]]),
-                _end_of_longest=("end", lambda s: s.iloc[s.reset_index(drop=True).index[
-                    df_drought_events_all.loc[s.index, "duration"].values.argmax()
-                ]]),
-            )
-            .reset_index()
-        )
-        # Re-compute per group to avoid closure issues
         drought_annual = _compute_longest_event_cols(df_drought_events_all, start_cy, end_cy)
     else:
         drought_annual = pd.DataFrame()
@@ -342,8 +310,8 @@ def _compute_longest_event_cols(
             "total_drought_flow_volume_cms": grp["flow_volume_cms"].sum(),
             "longest_drought_flow_volume_cms": grp["flow_volume_cms"].max(),
             "start_day_of_longest_drought": start_day,
-            "start_date_of_longest_drought": _decimal_date_scalar(start_longest),
-            "end_date_of_longest_drought": _decimal_date_scalar(end_longest),
+            "start_date_of_longest_drought": decimal_date(start_longest),
+            "end_date_of_longest_drought": decimal_date(end_longest),
             "end_day_of_longest_drought": end_day,
         })
 
@@ -404,8 +372,3 @@ def _compute_longest_event_cols(
     )[["site", "cy", "measure", "value", "threshold", "pct_type"]]
 
     return long_df
-
-
-def _decimal_date_scalar(dt) -> float:
-    """Convert a single datetime to decimal date."""
-    return dt.year + (dt.dayofyear - 1) / 365.0

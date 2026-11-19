@@ -8,14 +8,8 @@ Translated from R/site_spearmans.R.
 import numpy as np
 import pandas as pd
 
-
-def _nse(sim: np.ndarray, obs: np.ndarray) -> float:
-    """Nash-Sutcliffe Efficiency."""
-    mask = ~np.isnan(obs) & ~np.isnan(sim)
-    obs, sim = obs[mask], sim[mask]
-    if len(obs) == 0 or np.sum((obs - obs.mean()) ** 2) == 0:
-        return np.nan
-    return float(1.0 - np.sum((obs - sim) ** 2) / np.sum((obs - obs.mean()) ** 2))
+from ._util import nse
+from .config import THRESHOLDS
 
 
 def site_spearmans(
@@ -33,7 +27,7 @@ def site_spearmans(
     site_name : str
         Site identifier.
     thresholds : list of int
-        Percentile thresholds. Default: [5, 10, 20, 30].
+        Percentile thresholds. Default: config.THRESHOLDS.
 
     Returns
     -------
@@ -41,7 +35,7 @@ def site_spearmans(
         Columns: rho_obs_mod, quant_length, mod_nse, threshold, site, pct_type.
     """
     if thresholds is None:
-        thresholds = [5, 10, 20, 30]
+        thresholds = THRESHOLDS
 
     df = df_pct.dropna(subset=["q_obs"]).copy()
 
@@ -54,9 +48,7 @@ def site_spearmans(
     for thresh in thresholds:
         for pct_type in ["weibull_site", "weibull_jd"]:
             obs_col = f"{pct_type}_obs"
-            df["pct_value_obs"] = df[obs_col]
-
-            df_sub = df[df["pct_value_obs"] <= thresh].copy()
+            df_sub = df[df[obs_col] <= thresh]
 
             if len(df_sub) < 2:
                 rho = np.nan
@@ -66,7 +58,7 @@ def site_spearmans(
                 mod_r = df_sub["mod_rank"].values
                 cov = np.cov(obs_r, mod_r, ddof=1)[0, 1]
                 rho = cov / (obs_r.std(ddof=1) * mod_r.std(ddof=1))
-                nse_val = _nse(df_sub["q_mod"].values, df_sub["q_obs"].values)
+                nse_val = nse(df_sub["q_mod"].values, df_sub["q_obs"].values)
 
             records.append({
                 "rho_obs_mod": rho,

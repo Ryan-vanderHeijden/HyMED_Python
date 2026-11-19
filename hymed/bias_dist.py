@@ -8,6 +8,8 @@ Translated from R/site_bias_dist.R.
 import numpy as np
 import pandas as pd
 
+from .config import THRESHOLDS
+
 
 def site_bias_distribution(
     df_pct: pd.DataFrame,
@@ -24,7 +26,7 @@ def site_bias_distribution(
     site_name : str
         Site identifier.
     thresholds : list of int
-        Percentile thresholds. Default: [5, 10, 20, 30].
+        Percentile thresholds. Default: config.THRESHOLDS.
 
     Returns
     -------
@@ -32,7 +34,7 @@ def site_bias_distribution(
         Columns: mod_bias, mod_pct_bias, mod_sd_ratio, thresh, pct_type, site.
     """
     if thresholds is None:
-        thresholds = [5, 10, 20, 30]
+        thresholds = THRESHOLDS
 
     df = df_pct.dropna(subset=["q_obs"]).copy()
     records = []
