@@ -39,7 +39,7 @@ def prepare_obs_inputs(source_model: str = "nwm") -> None:
             raise KeyError(f"{site}: expected column '{model_col}' not found")
 
         df["q_cms_obs_ref"] = df["q_cms_obs"]
-        df = df.drop(columns=[model_col])
+        df = df.drop(columns=[model_col]).drop_duplicates()  # keep each day once
 
         df.to_csv(os.path.join(dst_dir, site), index=False)
         print(f"written: {site}")

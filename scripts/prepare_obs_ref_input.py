@@ -89,7 +89,8 @@ def prepare(data_dir: str, out_path: str, min_years: float) -> None:
             skipped.append(site)
             continue
 
-        df = df.sort_values("date").reset_index(drop=True)
+        # Overlapping downloads repeat some days; keep each day once.
+        df = df.drop_duplicates(["date", "q_cms_obs"]).sort_values("date").reset_index(drop=True)
         df["site"]         = site  # keep leading zeros (USGS convention)
         df["dt"]           = df["date"].dt.strftime("%Y-%m-%d")
         df["jd"]           = df["date"].dt.day_of_year

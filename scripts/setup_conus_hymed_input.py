@@ -128,7 +128,9 @@ def main() -> None:
             skipped.append(site)
             continue
 
-        merged = merged.sort_values("date").reset_index(drop=True)
+        # Overlapping downloads repeat some days; keep each day once.
+        merged = (merged.drop_duplicates(["date", "q_cms_obs", "q_cms_nwm"])
+                  .sort_values("date").reset_index(drop=True))
         merged["site"] = site
         merged["dt"] = merged["date"]
         merged["jd"] = merged["date"].dt.day_of_year

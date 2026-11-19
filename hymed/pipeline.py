@@ -20,6 +20,7 @@ Outputs (in out_path):
 import glob
 import multiprocessing
 import os
+import warnings
 
 import pandas as pd
 
@@ -74,7 +75,26 @@ def read_site_input(data_path: str, site_name: str, model: str) -> pd.DataFrame:
     df["dt"] = pd.to_datetime(df["dt"])
     df["q_mod"] = df[f"q_cms_{model}"]
     df["q_obs"] = df["q_cms_obs"]
-    return df.drop(columns=["q_cms_obs", f"q_cms_{model}"])
+    df = df.drop(columns=["q_cms_obs", f"q_cms_{model}"])
+    return drop_duplicate_dates(df, site_name)
+
+
+def drop_duplicate_dates(df: pd.DataFrame, site_name: str) -> pd.DataFrame:
+    """Drop repeated days with identical flows; raise if a day has conflicting flows.
+
+    Each day must appear once, or it is counted twice in the percentiles and drought
+    durations. Exact repeats (e.g. from overlapping downloads) are dropped with a warning.
+    """
+    dup = df.duplicated(["dt", "q_obs", "q_mod"])
+    if dup.any():
+        warnings.warn(f"{site_name}: dropped {int(dup.sum())} duplicated day(s)", stacklevel=2)
+        df = df[~dup].reset_index(drop=True)
+    conflict = df["dt"].duplicated(keep=False)
+    if conflict.any():
+        days = sorted(df.loc[conflict, "dt"].dt.strftime("%Y-%m-%d").unique())
+        raise ValueError(f"{site_name}: conflicting flows on duplicated day(s) {days[:5]}"
+                         + (f" and {len(days) - 5} more" if len(days) > 5 else ""))
+    return df
 
 
 def evaluate_site(df: pd.DataFrame, site_name: str, scheme: str = "per_threshold") -> dict:

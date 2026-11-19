@@ -103,6 +103,9 @@ Input CSVs (one per site) must contain the following columns:
 | `wy` | Water year (Oct 1 – Sep 30) |
 | `cy` | Climate year (Apr 1 – Mar 31) |
 
+Each day should appear once per site. `hymed run` drops repeated days with identical flows
+(with a warning) and stops with an error if a day repeats with different flows.
+
 ## Output Files
 
 All sites are combined into one file per output, in the `--out-path` directory:
