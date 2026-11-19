@@ -154,14 +154,21 @@ def combine_outputs(out_path: str, sites: list) -> None:
         df.to_csv(os.path.join(out_path, f"{output}.csv"), index=False)
 
 
-def read_ref_sites(path: str) -> set:
-    """Site ids with Ref == 1 from a CSV with columns 'site' and 'Ref'.
+def _site_key(site: str) -> str:
+    """Site id with leading zeros removed, for matching ids that were stored as numbers."""
+    return site.strip().lstrip("0")
 
-    Lists like GAGES-II often store ids as numbers, dropping leading zeros; ids shorter
-    than 8 digits are zero-padded back to the USGS form.
+
+def select_ref_sites(sites: list, path: str) -> list:
+    """The sites listed with Ref == 1 in a CSV with columns 'site' and 'Ref'.
+
+    Lists like GAGES-II often store ids as numbers, which drops leading zeros (and
+    padding to 8 digits does not restore 10- or 15-digit ids), so ids are matched with
+    leading zeros ignored. The returned ids are the ones in `sites`.
     """
     ref_df = pd.read_csv(path, dtype={"site": str})
-    return set(ref_df.loc[ref_df["Ref"] == 1, "site"].str.strip().str.zfill(8))
+    ref_keys = {_site_key(s) for s in ref_df.loc[ref_df["Ref"] == 1, "site"]}
+    return [s for s in sites if _site_key(s) in ref_keys]
 
 
 def list_sites(data_path: str) -> list:
@@ -202,7 +209,7 @@ def run_evaluation(
         'per_threshold' or 'universal'.
     ref_sites : str, optional
         CSV with columns 'site' and 'Ref'; only sites with Ref == 1 are evaluated.
-        Ids shorter than 8 digits are zero-padded to match USGS site numbers.
+        Ids are matched ignoring leading zeros (lists often store them as numbers).
     skip_existing : bool
         Resume: skip sites whose checkpoint is complete.
     write_percentiles : bool
@@ -223,8 +230,7 @@ def run_evaluation(
     sites = list_sites(data_path)
 
     if ref_sites:
-        ref_set = read_ref_sites(ref_sites)
-        sites = [s for s in sites if s in ref_set]
+        sites = select_ref_sites(sites, ref_sites)
         print(f"Filtered to {len(sites)} reference sites.", flush=True)
 
     to_run = sites
