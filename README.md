@@ -138,13 +138,11 @@ hymed/
 ├── _util.py                        # Shared helpers (rleid, NSE, climate/water year columns)
 ├── calculate_percentiles.py        # Weibull percentiles with CDPM zero-flow handling
 ├── calculate_properties.py         # Drought event identification (per-threshold and universal) and annual statistics
-├── calculate_booleans.py           # Drought boolean timeseries (pooled and threshold-only)
+├── calculate_booleans.py           # Threshold-only drought boolean timeseries (for kappa)
 ├── cohens_kappa.py                 # Cohen's kappa and classification accuracy
 ├── spearmans.py                    # Spearman's rho for low-flow periods
 ├── bias_dist.py                    # Bias and standard deviation ratio
-├── annual_signatures.py            # Annual drought signature evaluation metrics
-├── gather_data.py                  # Concatenate per-site CSV files from a folder
-└── setup_files.py                  # Combine model files and write per-site CSVs
+└── annual_signatures.py            # Annual drought signature evaluation metrics
 scripts/                            # Study-specific data preparation and method comparison
 ├── setup_conus_hymed_input.py      # CONUS NWM + USGS parquet -> per-site input CSVs
 ├── prepare_obs_ref_input.py        # GAGES-II reference sites, observed-only inputs

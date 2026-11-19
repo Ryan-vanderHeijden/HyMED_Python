@@ -61,11 +61,16 @@ def _write_atomic(df: pd.DataFrame, path: str) -> None:
 
 
 def read_site_input(data_path: str, site_name: str, model: str) -> pd.DataFrame:
-    """Read input_data/<site>.csv and rename the flow columns to q_obs / q_mod."""
+    """Read input_data/<site>.csv and rename the flow columns to q_obs / q_mod.
+
+    The site id is taken from the file name, so it keeps its leading zeros (the USGS
+    convention) even if the file's own site column was written as a number.
+    """
     df = pd.read_csv(
         os.path.join(data_path, "input_data", f"{site_name}.csv"),
         dtype={"site": str},
     )
+    df["site"] = site_name
     df["dt"] = pd.to_datetime(df["dt"])
     df["q_mod"] = df[f"q_cms_{model}"]
     df["q_obs"] = df["q_cms_obs"]
@@ -149,6 +154,16 @@ def combine_outputs(out_path: str, sites: list) -> None:
         df.to_csv(os.path.join(out_path, f"{output}.csv"), index=False)
 
 
+def read_ref_sites(path: str) -> set:
+    """Site ids with Ref == 1 from a CSV with columns 'site' and 'Ref'.
+
+    Lists like GAGES-II often store ids as numbers, dropping leading zeros; ids shorter
+    than 8 digits are zero-padded back to the USGS form.
+    """
+    ref_df = pd.read_csv(path, dtype={"site": str})
+    return set(ref_df.loc[ref_df["Ref"] == 1, "site"].str.strip().str.zfill(8))
+
+
 def list_sites(data_path: str) -> list:
     """Site ids (CSV basenames) in data_path/input_data."""
     input_dir = os.path.join(data_path, "input_data")
@@ -187,6 +202,7 @@ def run_evaluation(
         'per_threshold' or 'universal'.
     ref_sites : str, optional
         CSV with columns 'site' and 'Ref'; only sites with Ref == 1 are evaluated.
+        Ids shorter than 8 digits are zero-padded to match USGS site numbers.
     skip_existing : bool
         Resume: skip sites whose checkpoint is complete.
     write_percentiles : bool
@@ -207,8 +223,7 @@ def run_evaluation(
     sites = list_sites(data_path)
 
     if ref_sites:
-        ref_df = pd.read_csv(ref_sites, dtype={"site": str})
-        ref_set = set(ref_df.loc[ref_df["Ref"] == 1, "site"].tolist())
+        ref_set = read_ref_sites(ref_sites)
         sites = [s for s in sites if s in ref_set]
         print(f"Filtered to {len(sites)} reference sites.", flush=True)
 

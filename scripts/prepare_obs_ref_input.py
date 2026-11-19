@@ -90,7 +90,7 @@ def prepare(data_dir: str, out_path: str, min_years: float) -> None:
             continue
 
         df = df.sort_values("date").reset_index(drop=True)
-        df["site"]         = int(site)
+        df["site"]         = site  # keep leading zeros (USGS convention)
         df["dt"]           = df["date"].dt.strftime("%Y-%m-%d")
         df["jd"]           = df["date"].dt.day_of_year
         df["year"]         = df["date"].dt.year
