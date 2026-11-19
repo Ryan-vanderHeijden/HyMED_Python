@@ -74,6 +74,18 @@ df_bias     = site_bias_distribution(df_pct, "01011000")
 df_ann_eval = site_annual_signatures(df_annual_stats, "01011000")
 ```
 
+### Running the tests
+
+`tests/` holds end-to-end regression tests: both workflow runners are run on small synthetic
+inputs (`tests/golden/input_data/`) and every output file is compared against the golden
+outputs in `tests/golden/`. Requires `pytest`.
+
+```bash
+python -m pytest tests
+```
+
+Regenerate the golden files with `python tests/make_golden.py` only when an output change is intended.
+
 ## Input Data Format
 
 Input CSVs (one per site) must contain the following columns:
