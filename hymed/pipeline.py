@@ -4,7 +4,7 @@ pipeline.py
 Full HyMED evaluation workflow: per-site metrics (run in parallel) followed by the
 long-format summary files. Shared by run_single_site.py and
 run_single_site_universal.py, which differ only in how drought events are labeled
-(see hymed/calculate_properties_universal.py).
+(see hymed/calculate_properties.py).
 Translated from inst/extdata/run_single_site.R.
 """
 
@@ -20,8 +20,7 @@ from .annual_signatures import site_annual_signatures
 from .bias_dist import site_bias_distribution
 from .calculate_booleans import calculate_site_boolean_threshold_only
 from .calculate_percentiles import calculate_site_percentiles
-from .calculate_properties import calculate_site_properties
-from .calculate_properties_universal import calculate_site_properties_universal
+from .calculate_properties import calculate_site_properties, calculate_site_properties_universal
 from .cohens_kappa import site_cohens_kappa
 from .config import PCT_TYPE_LABELS
 from .gather_data import gather_data

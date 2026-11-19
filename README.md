@@ -132,8 +132,7 @@ hymed/
 ├── pipeline.py                     # Full workflow used by the run_single_site*.py scripts
 ├── gather_data.py                  # Concatenate per-site CSV files from a folder
 ├── calculate_percentiles.py        # Weibull percentiles with CDPM zero-flow handling
-├── calculate_properties.py         # Drought event identification and annual statistics
-├── calculate_properties_universal.py  # Same events at the 30th percentile, labeled by severity class
+├── calculate_properties.py         # Drought event identification (per-threshold and universal) and annual statistics
 ├── calculate_booleans.py           # Drought boolean timeseries (pooled and threshold-only)
 ├── cohens_kappa.py                 # Cohen's kappa and classification accuracy
 ├── spearmans.py                    # Spearman's rho for low-flow periods
