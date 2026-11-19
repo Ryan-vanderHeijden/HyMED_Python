@@ -1,10 +1,10 @@
 """
 pipeline.py
 
-Full HyMED evaluation workflow over many sites. Shared by run_single_site.py and
-run_single_site_universal.py, which differ only in how drought events are labeled
-(see hymed/calculate_properties.py).
-Translated from inst/extdata/run_single_site.R.
+Full HyMED evaluation workflow over many sites (run_evaluation; `hymed run` on the
+command line) and for a single site in memory (evaluate_site). The two schemes differ
+only in how drought events are labeled (see hymed/calculate_properties.py).
+Translated from the R package's inst/extdata/run_single_site.R.
 
 Outputs (in out_path):
 
@@ -17,7 +17,6 @@ Outputs (in out_path):
                               resume with --skip-existing; ann_eval is written last
 """
 
-import argparse
 import glob
 import multiprocessing
 import os
@@ -162,79 +161,71 @@ def list_sites(data_path: str) -> list:
     return [os.path.splitext(os.path.basename(f))[0] for f in input_files]
 
 
-def main(scheme: str = "per_threshold", argv: list = None) -> None:
-    """Command-line entry point for the full workflow."""
-    universal = scheme == "universal"
-    out_suffix = "_universal" if universal else ""
-    parser = argparse.ArgumentParser(
-        description="Run HyMED drought evaluation"
-        + (" (universal classification scheme)." if universal else ".")
-    )
-    parser.add_argument("--model", default="nwm", help="Model name (e.g. nwm)")
-    parser.add_argument(
-        "--data-path",
-        default=None,
-        help="Path to model data directory containing input_data/ (may be read-only). "
-             "Defaults to inst/extdata/<model>.",
-    )
-    parser.add_argument(
-        "--ref-sites",
-        default=None,
-        help="Path to a CSV with columns 'site' and 'Ref'. "
-             "If provided, only sites where Ref==1 are evaluated.",
-    )
-    parser.add_argument(
-        "--out-path",
-        default=None,
-        help=f"Path to write outputs. Defaults to inst/extdata/<model>{out_suffix}.",
-    )
-    parser.add_argument(
-        "--skip-existing",
-        action="store_true",
-        help="Resume: skip sites whose checkpoint in <out-path>/sites/ is complete.",
-    )
-    parser.add_argument(
-        "--write-percentiles",
-        action="store_true",
-        help="Also write daily percentiles per site to <out-path>/percentiles/.",
-    )
-    args = parser.parse_args(argv)
+def run_evaluation(
+    data_path: str,
+    out_path: str,
+    model: str,
+    scheme: str = "per_threshold",
+    ref_sites: str = None,
+    skip_existing: bool = False,
+    write_percentiles: bool = False,
+    workers: int = None,
+) -> None:
+    """
+    Evaluate every site in data_path/input_data in parallel and write the combined outputs.
 
-    model_name = args.model
-    data_path = args.data_path or os.path.join("inst", "extdata", model_name)
-    # Allow passing the input_data subfolder directly; normalize to parent
+    Parameters
+    ----------
+    data_path : str
+        Directory containing input_data/<site>.csv (may be read-only). Passing the
+        input_data directory itself also works.
+    out_path : str
+        Directory for the outputs (see module docstring).
+    model : str
+        Selects the q_cms_<model> column of the inputs.
+    scheme : str
+        'per_threshold' or 'universal'.
+    ref_sites : str, optional
+        CSV with columns 'site' and 'Ref'; only sites with Ref == 1 are evaluated.
+    skip_existing : bool
+        Resume: skip sites whose checkpoint is complete.
+    write_percentiles : bool
+        Also write the daily percentiles per site.
+    workers : int, optional
+        Number of processes. Default: $HYMED_WORKERS, else 16.
+    """
+    if scheme not in SCHEMES:
+        raise ValueError(f"scheme must be one of {list(SCHEMES)}, got {scheme!r}")
     if os.path.basename(data_path.rstrip("/\\")) == "input_data":
         data_path = os.path.dirname(data_path.rstrip("/\\"))
-    # Universal results default to a separate directory so they don't overwrite
-    # the per-threshold outputs.
-    out_path = args.out_path or os.path.join("inst", "extdata", model_name + out_suffix)
 
     for output in OUTPUTS:
         os.makedirs(os.path.join(out_path, "sites", output), exist_ok=True)
-    if args.write_percentiles:
+    if write_percentiles:
         os.makedirs(os.path.join(out_path, "percentiles"), exist_ok=True)
 
     sites = list_sites(data_path)
 
-    if args.ref_sites:
-        ref_df = pd.read_csv(args.ref_sites, dtype={"site": str})
-        ref_sites = set(ref_df.loc[ref_df["Ref"] == 1, "site"].tolist())
-        sites = [s for s in sites if s in ref_sites]
+    if ref_sites:
+        ref_df = pd.read_csv(ref_sites, dtype={"site": str})
+        ref_set = set(ref_df.loc[ref_df["Ref"] == 1, "site"].tolist())
+        sites = [s for s in sites if s in ref_set]
         print(f"Filtered to {len(sites)} reference sites.", flush=True)
 
     to_run = sites
-    if args.skip_existing:
+    if skip_existing:
         to_run = [
             s for s in sites if not os.path.exists(_checkpoint(out_path, DONE_MARKER, s))
         ]
         print(f"Skipping {len(sites) - len(to_run)} existing sites, {len(to_run)} remaining.", flush=True)
 
-    n_workers = int(os.environ.get("HYMED_WORKERS", "16"))
+    if workers is None:
+        workers = int(os.environ.get("HYMED_WORKERS", "16"))
     worker_args = [
-        (i, len(to_run), s, data_path, model_name, out_path, scheme, args.write_percentiles)
+        (i, len(to_run), s, data_path, model, out_path, scheme, write_percentiles)
         for i, s in enumerate(to_run, start=1)
     ]
-    with multiprocessing.Pool(processes=n_workers) as pool:
+    with multiprocessing.Pool(processes=workers) as pool:
         pool.map(_run_site_eval_worker, worker_args)
 
     # Combine every selected site, including ones completed by an earlier run.

@@ -5,12 +5,12 @@ Prepares observed-only input CSVs for HyMED evaluation.
 
 Reads existing model input CSVs (default: nwm), duplicates q_cms_obs as
 q_cms_obs_ref, drops the model flow column, and writes the result to
-inst/extdata/obs/input_data/. Run this once before running run_single_site.py
-with --model obs_ref --data-path inst/extdata/obs.
+inst/extdata/obs/input_data/ (paths relative to the current directory). Run this
+once before `hymed run --model obs_ref --data-path inst/extdata/obs`.
 
 Usage:
-    python prepare_obs_input.py
-    python prepare_obs_input.py --source-model nwm
+    python scripts/prepare_obs_input.py
+    python scripts/prepare_obs_input.py --source-model nwm
 """
 
 import os
@@ -46,7 +46,7 @@ def prepare_obs_inputs(source_model: str = "nwm") -> None:
 
     print(f"\nDone. {len(src_files)} files written to {dst_dir}")
     print("Run evaluation with:")
-    print("  python run_single_site.py --model obs_ref --data-path inst/extdata/obs")
+    print("  hymed run --model obs_ref --data-path inst/extdata/obs --out-path <dir>")
 
 
 if __name__ == "__main__":

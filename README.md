@@ -21,10 +21,12 @@ Drought percentiles are computed using the Weibull formula with optional **varia
 
 ## Installation
 
-Python 3.8 or higher is recommended. Install dependencies with:
+Requires Python 3.9 or higher. From a clone of this repository:
 
 ```bash
-pip install -r requirements.txt
+pip install -e .              # the hymed package and the `hymed` command
+pip install -e ".[scripts]"   # plus pyarrow, tqdm, matplotlib for the scripts in scripts/
+pip install -e ".[dev]"       # plus pytest
 ```
 
 **Dependencies:** `pandas`, `numpy`, `scipy`, `scikit-learn`
@@ -34,17 +36,18 @@ pip install -r requirements.txt
 ### Running the full workflow
 
 ```bash
-python run_single_site.py --model nwm --data-path <dir containing input_data/> --out-path <dir>
-python run_single_site_universal.py --model nwm --data-path <dir> --out-path <dir>
+hymed run --model nwm --data-path <dir containing input_data/> --out-path <dir>
+hymed run --model nwm --data-path <dir> --out-path <dir> --universal
 ```
 
-`--model` selects the `q_cms_<model>` column of the input files. The scripts evaluate every
-site in `input_data/` in parallel (set `HYMED_WORKERS`, default 16) and write the combined
-output files described below. `run_single_site_universal.py` labels drought events with the
-universal severity classification instead of the per-threshold scheme.
+(`python -m hymed run ...` works the same without installing the command.)
+`--model` selects the `q_cms_<model>` column of the input files. Every site in `input_data/`
+is evaluated in parallel and the combined output files described below are written.
 
 | Option | Effect |
 |---|---|
+| `--universal` | Identify drought events once at the 30th percentile and label each with a severity class (5/10/20/30) from the lowest percentile it reaches, instead of identifying events separately at each threshold |
+| `--workers <n>` | Number of parallel processes (default: `$HYMED_WORKERS`, else 16) |
 | `--ref-sites <csv>` | Only evaluate sites with `Ref == 1` in a CSV with `site` and `Ref` columns |
 | `--skip-existing` | Resume an interrupted run: sites already checkpointed in `sites/` are not recomputed |
 | `--write-percentiles` | Also write the daily percentiles per site to `percentiles/` |
@@ -67,18 +70,19 @@ results["drought_events"]
 results["percentiles"]
 ```
 
-The individual steps (`calculate_site_percentiles`, `calculate_site_properties`,
+To run many sites from Python, use `hymed.pipeline.run_evaluation(data_path, out_path, model, ...)`,
+which takes the same options as `hymed run`. The individual steps (`calculate_site_percentiles`, `calculate_site_properties`,
 `site_cohens_kappa`, `site_spearmans`, `site_bias_distribution`, `site_annual_signatures`)
 are also exported; see `hymed/pipeline.py:evaluate_site` for how they fit together.
 
 ### Running the tests
 
-`tests/` holds end-to-end regression tests: both workflow runners are run on small synthetic
+`tests/` holds end-to-end regression tests: `hymed run` (both schemes) is run on small synthetic
 inputs (`tests/golden/input_data/`) and every output file is compared against the golden
 outputs in `tests/golden/`. Requires `pytest`.
 
 ```bash
-python -m pytest tests
+python -m pytest
 ```
 
 Regenerate the golden files with `python tests/make_golden.py` only when an output change is intended.
@@ -128,11 +132,10 @@ Also written:
 
 ```
 hymed/
-├── __init__.py
+├── cli.py                          # `hymed run` command line
+├── pipeline.py                     # Multi-site workflow (run_evaluation) and evaluate_site
 ├── config.py                       # Shared constants (thresholds, pooling parameters, ...)
 ├── _util.py                        # Shared helpers (rleid, NSE, climate/water year columns)
-├── pipeline.py                     # Full workflow used by the run_single_site*.py scripts
-├── gather_data.py                  # Concatenate per-site CSV files from a folder
 ├── calculate_percentiles.py        # Weibull percentiles with CDPM zero-flow handling
 ├── calculate_properties.py         # Drought event identification (per-threshold and universal) and annual statistics
 ├── calculate_booleans.py           # Drought boolean timeseries (pooled and threshold-only)
@@ -140,11 +143,16 @@ hymed/
 ├── spearmans.py                    # Spearman's rho for low-flow periods
 ├── bias_dist.py                    # Bias and standard deviation ratio
 ├── annual_signatures.py            # Annual drought signature evaluation metrics
+├── gather_data.py                  # Concatenate per-site CSV files from a folder
 └── setup_files.py                  # Combine model files and write per-site CSVs
-run_single_site.py                  # Main workflow script
-run_single_site_universal.py        # Same workflow, universal severity classification
+scripts/                            # Study-specific data preparation and method comparison
+├── setup_conus_hymed_input.py      # CONUS NWM + USGS parquet -> per-site input CSVs
+├── prepare_obs_ref_input.py        # GAGES-II reference sites, observed-only inputs
+├── prepare_obs_input.py            # Observed-only inputs from existing model inputs
+├── compare_methods.py              # Per-threshold vs universal drought events
+└── compare_methods.ipynb
 tests/                              # End-to-end regression tests
-requirements.txt
+pyproject.toml
 ```
 
 ## Associated Publications

@@ -11,10 +11,9 @@ Output columns:
   site, dt, q_cms_obs, q_cms_obs_ref, jd, year, month, wy, cy
 
 Usage:
-    python prepare_obs_ref_input.py
-    python prepare_obs_ref_input.py --data-dir /path/to/CONUS_analysis
-    python prepare_obs_ref_input.py --out-path inst/extdata/obs_ref/input_data
-    python prepare_obs_ref_input.py --min-years 10
+    python scripts/prepare_obs_ref_input.py --data-dir /path/to/CONUS_analysis
+    python scripts/prepare_obs_ref_input.py --data-dir <dir> --out-path inst/extdata/obs_ref/input_data
+    python scripts/prepare_obs_ref_input.py --data-dir <dir> --min-years 10
 """
 
 import os
@@ -26,15 +25,8 @@ from tqdm import tqdm
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 
-_CONUS_ANALYSIS = (
-    "/Users/ryanvan/Library/CloudStorage/OneDrive-UniversityofVermont"
-    "/Documents/_UVM/Research/CIROH/_CRB Study/CONUS_analysis"
-)
-
-_DEFAULT_OUT = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "inst", "extdata", "obs", "input_data",
-)
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DEFAULT_OUT = os.path.join(_REPO, "inst", "extdata", "obs", "input_data")
 
 OBS_WINDOW_START = pd.Timestamp("1979-01-01")
 OBS_WINDOW_END   = pd.Timestamp("2023-12-31")
@@ -115,7 +107,7 @@ def prepare(data_dir: str, out_path: str, min_years: float) -> None:
     if skipped:
         print(f"Skipped {len(skipped)} empty sites: {skipped}")
     print("Run evaluation with:")
-    print("  python run_single_site.py --model obs_ref --data-path inst/extdata/obs")
+    print("  hymed run --model obs_ref --data-path inst/extdata/obs --out-path <dir>")
 
 
 if __name__ == "__main__":
@@ -124,7 +116,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--data-dir",
-        default=_CONUS_ANALYSIS,
+        required=True,
         help="Directory containing streamflow.parquet and GAGES-II_ref_non_ref.csv",
     )
     parser.add_argument(

@@ -23,9 +23,10 @@ GOLDEN = os.path.join(TESTS, "golden")
 GOLDEN_INPUTS = os.path.join(GOLDEN, "input_data")
 GOLDEN_ANNUAL = os.path.join(GOLDEN, "annual_stats")
 
+# Scheme -> extra `hymed run` arguments.
 SCHEMES = {
-    "per_threshold": "run_single_site.py",
-    "universal": "run_single_site_universal.py",
+    "per_threshold": [],
+    "universal": ["--universal"],
 }
 
 
@@ -51,8 +52,8 @@ def run_workflow(scheme: str, root: str, *extra_args: str, stage: bool = True) -
         stage_inputs(os.path.join(work, "input_data"))
     env = dict(os.environ, HYMED_WORKERS="2")
     proc = subprocess.run(
-        [sys.executable, SCHEMES[scheme], "--model", MODEL, "--data-path", work,
-         "--out-path", work, "--write-percentiles", *extra_args],
+        [sys.executable, "-m", "hymed", "run", *SCHEMES[scheme], "--model", MODEL,
+         "--data-path", work, "--out-path", work, "--write-percentiles", *extra_args],
         cwd=REPO, env=env, check=True, capture_output=True, text=True,
     )
     with open(os.path.join(root, f"{scheme}.stdout"), "w") as f:
