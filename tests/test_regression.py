@@ -14,7 +14,9 @@ import os
 import pandas as pd
 import pytest
 
-from workflow import SCHEMES, output_files, run_workflow
+from workflow import (
+    GOLDEN_ANNUAL, SCHEMES, compute_annual_stats, output_files, run_workflow,
+)
 
 GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "golden")
 
@@ -47,5 +49,26 @@ def test_file_matches_golden(outputs, scheme, rel):
     assert os.path.exists(path), f"missing output {rel}"
     read = dict(dtype={"site": str}, keep_default_na=True)
     expected = pd.read_csv(os.path.join(GOLDEN, scheme, rel + ".gz"), **read)
+    actual = pd.read_csv(path, **read)
+    pd.testing.assert_frame_equal(actual, expected, check_exact=False, rtol=1e-9, atol=1e-12)
+
+
+@pytest.fixture(scope="module")
+def annual_stats(tmp_path_factory):
+    root = tmp_path_factory.mktemp("annual")
+    return {scheme: compute_annual_stats(scheme, str(root)) for scheme in SCHEMES}
+
+
+@pytest.mark.parametrize(
+    "scheme,site",
+    [(s, f[: -len(".csv.gz")])
+     for s in SCHEMES for f in sorted(os.listdir(os.path.join(GOLDEN_ANNUAL, s)))],
+)
+def test_annual_stats_match_golden(annual_stats, tmp_path, scheme, site):
+    """annual_stats rows (sorted) match golden: guards the zero-fill rules directly."""
+    path = tmp_path / "actual.csv"
+    annual_stats[scheme][site].to_csv(path, index=False)
+    read = dict(dtype={"site": str})
+    expected = pd.read_csv(os.path.join(GOLDEN_ANNUAL, scheme, f"{site}.csv.gz"), **read)
     actual = pd.read_csv(path, **read)
     pd.testing.assert_frame_equal(actual, expected, check_exact=False, rtol=1e-9, atol=1e-12)

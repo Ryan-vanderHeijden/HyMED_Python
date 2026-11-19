@@ -6,6 +6,9 @@ leave every golden file untouched. Layout:
 
   golden/input_data/<site>.csv.gz      synthetic inputs (tests/synthetic.py)
   golden/<scheme>/.../<file>.csv.gz    outputs of each workflow runner
+  golden/annual_stats/<scheme>/<site>.csv.gz
+                                       annual_stats from the properties step (not
+                                       written by the runners; rows sorted)
 
 Usage (from the repo root):
     python tests/make_golden.py            # outputs only, from the frozen inputs
@@ -20,7 +23,10 @@ import shutil
 import tempfile
 
 from synthetic import write_inputs
-from workflow import GOLDEN, GOLDEN_INPUTS, SCHEMES, output_files, run_workflow
+from workflow import (
+    GOLDEN, GOLDEN_ANNUAL, GOLDEN_INPUTS, SCHEMES, compute_annual_stats, output_files,
+    run_workflow,
+)
 
 
 def _gzip(src_path: str, dst_path: str) -> None:
@@ -53,6 +59,14 @@ def main() -> None:
             for rel in files:
                 _gzip(os.path.join(work, rel), os.path.join(GOLDEN, scheme, rel + ".gz"))
             print(f"{scheme}: {len(files)} files")
+
+            annual_dir = os.path.join(GOLDEN_ANNUAL, scheme)
+            shutil.rmtree(annual_dir, ignore_errors=True)
+            for site, annual in compute_annual_stats(scheme, tmp).items():
+                csv = os.path.join(tmp, f"annual_{scheme}_{site}.csv")
+                annual.to_csv(csv, index=False)
+                _gzip(csv, os.path.join(annual_dir, f"{site}.csv.gz"))
+            print(f"{scheme}: annual_stats for {len(os.listdir(annual_dir))} sites")
 
 
 if __name__ == "__main__":

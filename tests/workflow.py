@@ -21,6 +21,7 @@ GOLDEN = os.path.join(TESTS, "golden")
 # Inputs are frozen alongside the golden outputs (numpy's Generator streams are not
 # guaranteed stable across versions, so regenerating them could drift).
 GOLDEN_INPUTS = os.path.join(GOLDEN, "input_data")
+GOLDEN_ANNUAL = os.path.join(GOLDEN, "annual_stats")
 
 SCHEMES = {
     "per_threshold": "run_single_site.py",
@@ -54,6 +55,33 @@ def run_workflow(scheme: str, root: str) -> str:
         cwd=REPO, env=env, check=True, capture_output=True, text=True,
     )
     return work
+
+
+ANNUAL_STATS_KEY = ["site", "pct_type", "threshold", "measure", "cy"]
+
+
+def compute_annual_stats(scheme: str, root: str) -> dict:
+    """Return {site: annual_stats} from the properties step, which no file output exposes.
+
+    Rows are sorted by ANNUAL_STATS_KEY: the row order of annual_stats is not part of
+    the contract (it is only consumed via pivot/groupby in site_annual_signatures).
+    """
+    if REPO not in sys.path:
+        sys.path.insert(0, REPO)
+    from hymed import calculate_site_percentiles
+    from hymed._util import climate_year
+    from hymed.pipeline import SCHEMES, list_sites, read_site_input
+
+    work = os.path.join(root, f"annual_stats_{scheme}")
+    stage_inputs(os.path.join(work, "input_data"))
+    out = {}
+    for site in list_sites(work):
+        df = read_site_input(work, site, MODEL)
+        cy = climate_year(df["dt"])
+        df_pct = calculate_site_percentiles(df, site, units="cms")
+        _, annual = SCHEMES[scheme](df_pct, site, start_cy=int(cy.min()), end_cy=int(cy.max()))
+        out[site] = annual.sort_values(ANNUAL_STATS_KEY).reset_index(drop=True)
+    return out
 
 
 def output_files(work: str) -> list:
