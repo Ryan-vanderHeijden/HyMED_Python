@@ -30,6 +30,11 @@ def nse(sim: np.ndarray, obs: np.ndarray) -> float:
     return float(1.0 - np.sum((obs - sim) ** 2) / denom)
 
 
+def metric_rows(key: dict, metrics: dict, source: str = "mod") -> list:
+    """Long-format rows: one per metric, each {**key, metric, source, value}."""
+    return [{**key, "metric": m, "source": source, "value": v} for m, v in metrics.items()]
+
+
 def _year_starting(dt: pd.Series, start_month: int) -> np.ndarray:
     """Year label for a year beginning in start_month, named by the year it ends in."""
     return np.where(dt.dt.month >= start_month, dt.dt.year + 1, dt.dt.year)

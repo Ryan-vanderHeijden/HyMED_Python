@@ -10,6 +10,7 @@ golden files (tests/make_golden.py) when the change is deliberate.
 """
 
 import os
+import shutil
 
 import pandas as pd
 import pytest
@@ -72,3 +73,33 @@ def test_annual_stats_match_golden(annual_stats, tmp_path, scheme, site):
     expected = pd.read_csv(os.path.join(GOLDEN_ANNUAL, scheme, f"{site}.csv.gz"), **read)
     actual = pd.read_csv(path, **read)
     pd.testing.assert_frame_equal(actual, expected, check_exact=False, rtol=1e-9, atol=1e-12)
+
+
+COMBINED = ["drought_events.csv", "kappa_long.csv", "spear_bias_dist_long.csv", "ann_eval_long.csv"]
+
+
+@pytest.mark.parametrize("scheme", ["per_threshold"])
+def test_resume_with_skip_existing(tmp_path, scheme):
+    """An interrupted run resumes from checkpoints, and stale checkpoints are ignored."""
+    work = run_workflow(scheme, str(tmp_path))
+    sites_dir = os.path.join(work, "sites")
+    for output in os.listdir(sites_dir):
+        d = os.path.join(sites_dir, output)
+        # Simulate a site that never finished, and a leftover site from another run.
+        os.remove(os.path.join(d, "01000002.csv"))
+        shutil.copy(os.path.join(d, "01000001.csv"), os.path.join(d, "09999999.csv"))
+    for f in COMBINED:
+        os.remove(os.path.join(work, f))
+
+    run_workflow(scheme, str(tmp_path), "--skip-existing", stage=False)
+
+    with open(tmp_path / f"{scheme}.stdout") as f:
+        stdout = f.read()
+    assert "Skipping 3 existing sites, 1 remaining." in stdout
+    assert "site: 01000002" in stdout
+    read = dict(dtype={"site": str})
+    for f in COMBINED:
+        actual = pd.read_csv(os.path.join(work, f), **read)
+        assert "09999999" not in set(actual["site"]), f
+        expected = pd.read_csv(os.path.join(GOLDEN, scheme, f + ".gz"), **read)
+        pd.testing.assert_frame_equal(actual, expected, check_exact=False, rtol=1e-9, atol=1e-12)

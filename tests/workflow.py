@@ -40,20 +40,23 @@ def stage_inputs(input_dir: str) -> None:
             shutil.copyfileobj(src, dst)
 
 
-def run_workflow(scheme: str, root: str) -> str:
+def run_workflow(scheme: str, root: str, *extra_args: str, stage: bool = True) -> str:
     """Stage inputs under root/scheme, run `scheme` there, and return the output dir.
 
-    data_path and out_path are the same directory, so outputs land in one tree
-    regardless of which of the two each runner writes drought_props to.
+    Runs with --write-percentiles so the daily percentiles stay under test.
+    The process's stdout is stored on the returned path's `.stdout` file for inspection.
     """
     work = os.path.join(root, scheme)
-    stage_inputs(os.path.join(work, "input_data"))
+    if stage:
+        stage_inputs(os.path.join(work, "input_data"))
     env = dict(os.environ, HYMED_WORKERS="2")
-    subprocess.run(
-        [sys.executable, SCHEMES[scheme],
-         "--model", MODEL, "--data-path", work, "--out-path", work],
+    proc = subprocess.run(
+        [sys.executable, SCHEMES[scheme], "--model", MODEL, "--data-path", work,
+         "--out-path", work, "--write-percentiles", *extra_args],
         cwd=REPO, env=env, check=True, capture_output=True, text=True,
     )
+    with open(os.path.join(root, f"{scheme}.stdout"), "w") as f:
+        f.write(proc.stdout)
     return work
 
 
@@ -84,12 +87,16 @@ def compute_annual_stats(scheme: str, root: str) -> dict:
     return out
 
 
+# Not part of the output contract: the inputs, and the per-site resume checkpoints.
+INTERNAL_DIRS = {"input_data", "sites"}
+
+
 def output_files(work: str) -> list:
-    """Relative paths of every output CSV (inputs excluded), sorted."""
+    """Relative paths of every output CSV (inputs and checkpoints excluded), sorted."""
     out = []
     for dirpath, _, files in os.walk(work):
         rel_dir = os.path.relpath(dirpath, work)
-        if rel_dir.split(os.sep)[0] == "input_data":
+        if rel_dir.split(os.sep)[0] in INTERNAL_DIRS:
             continue
         out += [os.path.normpath(os.path.join(rel_dir, f)) for f in files if f.endswith(".csv")]
     return sorted(out)

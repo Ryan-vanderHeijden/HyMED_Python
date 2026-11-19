@@ -8,7 +8,8 @@ Translated from R/site_cohens_kappas.R.
 import pandas as pd
 from sklearn.metrics import cohen_kappa_score
 
-from .config import THRESHOLDS
+from ._util import metric_rows
+from .config import METRIC_COLS, PCT_TYPE_LABELS, THRESHOLDS
 
 
 def site_cohens_kappa(df_bool: pd.DataFrame, site_name: str) -> pd.DataFrame:
@@ -26,7 +27,8 @@ def site_cohens_kappa(df_bool: pd.DataFrame, site_name: str) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Columns: pct_type, threshold, site, mod_kappa, mod_classification_accuracy.
+        Long format (config.METRIC_COLS): site, pct_type ('variable'/'fixed'), threshold,
+        metric ('kappa', 'classification_accuracy'), source ('mod'), value.
     """
     records = []
 
@@ -65,12 +67,7 @@ def site_cohens_kappa(df_bool: pd.DataFrame, site_name: str) -> pd.DataFrame:
                 mod_ca = float("nan")
                 kappa = float("nan")
 
-            records.append({
-                "pct_type": percent_type,
-                "threshold": thresh,
-                "site": site_name,
-                "mod_kappa": kappa,
-                "mod_classification_accuracy": mod_ca,
-            })
+            key = {"site": site_name, "pct_type": PCT_TYPE_LABELS[percent_type], "threshold": thresh}
+            records += metric_rows(key, {"kappa": kappa, "classification_accuracy": mod_ca})
 
-    return pd.DataFrame(records)
+    return pd.DataFrame(records, columns=METRIC_COLS)

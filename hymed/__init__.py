@@ -7,3 +7,4 @@ from .spearmans import site_spearmans
 from .bias_dist import site_bias_distribution
 from .annual_signatures import site_annual_signatures
 from .setup_files import setup_individual_files
+from .pipeline import evaluate_site

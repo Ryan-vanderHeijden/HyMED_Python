@@ -33,27 +33,27 @@ pip install -r requirements.txt
 
 ### Running the full workflow
 
-Edit `run_single_site.py` to set the model name (`nhm` or `nwm`), then run:
-
 ```bash
-python run_single_site.py
+python run_single_site.py --model nwm --data-path <dir containing input_data/> --out-path <dir>
+python run_single_site_universal.py --model nwm --data-path <dir> --out-path <dir>
 ```
 
-The script iterates over all sites in `input_data/`, computes all metrics, writes per-site output files, and combines results into three long-format summary files.
+`--model` selects the `q_cms_<model>` column of the input files. The scripts evaluate every
+site in `input_data/` in parallel (set `HYMED_WORKERS`, default 16) and write the combined
+output files described below. `run_single_site_universal.py` labels drought events with the
+universal severity classification instead of the per-threshold scheme.
+
+| Option | Effect |
+|---|---|
+| `--ref-sites <csv>` | Only evaluate sites with `Ref == 1` in a CSV with `site` and `Ref` columns |
+| `--skip-existing` | Resume an interrupted run: sites already checkpointed in `sites/` are not recomputed |
+| `--write-percentiles` | Also write the daily percentiles per site to `percentiles/` |
 
 ### Using the package directly
 
 ```python
 import pandas as pd
-from hymed import (
-    calculate_site_percentiles,
-    calculate_site_properties,
-    calculate_site_boolean_threshold_only,
-    site_cohens_kappa,
-    site_spearmans,
-    site_bias_distribution,
-    site_annual_signatures,
-)
+from hymed import evaluate_site
 
 # Load input data for one site
 df = pd.read_csv("inst/extdata/nhm/input_data/01011000.csv", dtype={"site": str})
@@ -61,18 +61,15 @@ df["dt"] = pd.to_datetime(df["dt"])
 df["q_mod"] = df["q_cms_nhm"]
 df["q_obs"] = df["q_cms_obs"]
 
-# Calculate percentiles
-df_pct = calculate_site_percentiles(df, site_name="01011000", units="cms")
-
-# Calculate drought event properties and annual statistics
-df_properties, df_annual_stats = calculate_site_properties(df_pct, site_name="01011000")
-
-# Calculate evaluation metrics
-df_kappa    = site_cohens_kappa(calculate_site_boolean_threshold_only(df_pct), "01011000")
-df_spear    = site_spearmans(df_pct, "01011000")
-df_bias     = site_bias_distribution(df_pct, "01011000")
-df_ann_eval = site_annual_signatures(df_annual_stats, "01011000")
+results = evaluate_site(df, "01011000", scheme="per_threshold")  # or "universal"
+results["kappa_long"]       # same layout as the combined output files
+results["drought_events"]
+results["percentiles"]
 ```
+
+The individual steps (`calculate_site_percentiles`, `calculate_site_properties`,
+`site_cohens_kappa`, `site_spearmans`, `site_bias_distribution`, `site_annual_signatures`)
+are also exported; see `hymed/pipeline.py:evaluate_site` for how they fit together.
 
 ### Running the tests
 
@@ -104,23 +101,28 @@ Input CSVs (one per site) must contain the following columns:
 
 ## Output Files
 
-Per-site outputs are written to subfolders within the model data directory:
-
-| Folder / File | Contents |
-|---|---|
-| `percentiles/<site>.csv` | Weibull percentile columns for obs and mod |
-| `kappa/kappa_<site>.csv` | Cohen's kappa and classification accuracy |
-| `spearmans/spearman_<site>.csv` | Spearman's rho and NSE for low-flow subsets |
-| `bias_dist/bias_dist_<site>.csv` | Bias, percent bias, and SD ratio |
-| `ann_eval/ann_eval_<site>.csv` | Annual drought signature evaluation metrics |
-
-Three aggregated long-format files are also written to the model directory root:
+All sites are combined into one file per output, in the `--out-path` directory:
 
 | File | Contents |
 |---|---|
-| `kappa_long.csv` | Kappa metrics for all sites, thresholds, and percentile types |
-| `spear_bias_dist_long.csv` | Spearman and bias metrics in long format |
-| `ann_eval_long.csv` | Annual evaluation metrics in long format |
+| `drought_events.csv` | One row per drought event: duration, severity, intensity, flow volume, start/end, `threshold`, `pct_type` |
+| `kappa_long.csv` | Cohen's kappa and classification accuracy |
+| `spear_bias_dist_long.csv` | Spearman's rho and NSE for low-flow days; bias, percent bias and SD ratio |
+| `ann_eval_long.csv` | Annual drought signature metrics (NSE, correlations, errors) per annual `measure` |
+
+The three metric files share one long layout: `site, pct_type, threshold, metric, source, value`,
+with an extra `measure` column after `threshold` in `ann_eval_long.csv`. `pct_type` is
+`variable` (Julian-day percentiles) or `fixed` (site percentiles). `source` is `mod` for
+model-vs-observed metrics and `obs` for observed reference values (the observed annual
+`mean` in `ann_eval_long.csv`). In the universal scheme, `threshold` is the event's severity
+class rather than the identification threshold.
+
+Also written:
+
+| Folder | Contents |
+|---|---|
+| `percentiles/<site>.csv` | Daily Weibull percentiles for obs and mod (only with `--write-percentiles`) |
+| `sites/<output>/<site>.csv` | Per-site checkpoints of the combined files, used by `--skip-existing` |
 
 ## Package Structure
 

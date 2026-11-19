@@ -1,11 +1,20 @@
 """
 pipeline.py
 
-Full HyMED evaluation workflow: per-site metrics (run in parallel) followed by the
-long-format summary files. Shared by run_single_site.py and
+Full HyMED evaluation workflow over many sites. Shared by run_single_site.py and
 run_single_site_universal.py, which differ only in how drought events are labeled
 (see hymed/calculate_properties.py).
 Translated from inst/extdata/run_single_site.R.
+
+Outputs (in out_path):
+
+  drought_events.csv          drought events, all sites
+  kappa_long.csv              Cohen's kappa / classification accuracy, all sites
+  spear_bias_dist_long.csv    Spearman's rho, NSE, bias, SD ratio, all sites
+  ann_eval_long.csv           annual drought signature metrics, all sites
+  percentiles/<site>.csv      daily percentiles (only with --write-percentiles)
+  sites/<output>/<site>.csv   per-site checkpoints of the four combined files, used to
+                              resume with --skip-existing; ann_eval is written last
 """
 
 import argparse
@@ -22,8 +31,6 @@ from .calculate_booleans import calculate_site_boolean_threshold_only
 from .calculate_percentiles import calculate_site_percentiles
 from .calculate_properties import calculate_site_properties, calculate_site_properties_universal
 from .cohens_kappa import site_cohens_kappa
-from .config import PCT_TYPE_LABELS
-from .gather_data import gather_data
 from .spearmans import site_spearmans
 
 SCHEMES = {
@@ -31,19 +38,27 @@ SCHEMES = {
     "universal": calculate_site_properties_universal,
 }
 
-# Per-site output folders, and the filename prefix used in each.
-OUTPUT_DIRS = {
-    "percentiles": "",
-    "drought_props": "",
-    "kappa": "kappa_",
-    "spearmans": "spearman_",
-    "bias_dist": "bias_dist_",
-    "ann_eval": "ann_eval_",
+# Combined output file -> rows are stably sorted by these columns after concatenation.
+# "drought_events" keeps the per-site order (site, then pct_type and threshold blocks).
+OUTPUTS = {
+    "drought_events": ["site"],
+    "kappa_long": ["site", "pct_type", "threshold"],
+    "spear_bias_dist_long": ["site", "pct_type", "threshold"],
+    "ann_eval_long": ["site", "pct_type", "threshold", "measure"],
 }
+# Written last for each site, so its presence means the site's checkpoint is complete.
+DONE_MARKER = "ann_eval_long"
 
 
-def _site_file(out_path: str, folder: str, site_name: str) -> str:
-    return os.path.join(out_path, folder, f"{OUTPUT_DIRS[folder]}{site_name}.csv")
+def _checkpoint(out_path: str, output: str, site_name: str) -> str:
+    return os.path.join(out_path, "sites", output, f"{site_name}.csv")
+
+
+def _write_atomic(df: pd.DataFrame, path: str) -> None:
+    """Write via a temp file so an interrupted run never leaves a partial checkpoint."""
+    tmp = f"{path}.tmp"
+    df.to_csv(tmp, index=False)
+    os.replace(tmp, path)
 
 
 def read_site_input(data_path: str, site_name: str, model: str) -> pd.DataFrame:
@@ -58,128 +73,81 @@ def read_site_input(data_path: str, site_name: str, model: str) -> pd.DataFrame:
     return df.drop(columns=["q_cms_obs", f"q_cms_{model}"])
 
 
+def evaluate_site(df: pd.DataFrame, site_name: str, scheme: str = "per_threshold") -> dict:
+    """
+    Run the full drought evaluation for one site's paired series.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Columns site, dt, q_obs, q_mod (see read_site_input).
+    site_name : str
+        Site identifier.
+    scheme : str
+        Drought event labeling: 'per_threshold' or 'universal'.
+
+    Returns
+    -------
+    dict
+        'percentiles' (daily) plus one DataFrame per key of OUTPUTS.
+    """
+    cy = climate_year(df["dt"])
+    df_pct = calculate_site_percentiles(df, site_name, units="cms")
+    df_events, df_annual_stats = SCHEMES[scheme](
+        df_pct, site_name, start_cy=int(cy.min()), end_cy=int(cy.max()),
+    )
+    return {
+        "percentiles": df_pct,
+        "drought_events": df_events,
+        # Kappa uses threshold-only booleans (no event pooling).
+        "kappa_long": site_cohens_kappa(calculate_site_boolean_threshold_only(df_pct), site_name),
+        "spear_bias_dist_long": pd.concat(
+            [site_spearmans(df_pct, site_name), site_bias_distribution(df_pct, site_name)],
+            ignore_index=True,
+        ),
+        "ann_eval_long": site_annual_signatures(df_annual_stats, site_name),
+    }
+
+
 def run_site_eval(
     site_name: str,
     data_path: str,
     model: str,
     out_path: str,
     scheme: str = "per_threshold",
+    write_percentiles: bool = False,
 ) -> None:
-    """
-    Run full drought evaluation for a single site and write its per-site outputs.
-
-    Parameters
-    ----------
-    site_name : str
-        USGS station ID (matches CSV filename without extension).
-    data_path : str
-        Path to the model data directory containing input_data/ (may be read-only).
-    model : str
-        Model name string (e.g. 'nhm' or 'nwm'); selects the q_cms_<model> column.
-    out_path : str
-        Path to write output CSVs (must be writable).
-    scheme : str
-        Drought event labeling: 'per_threshold' or 'universal'.
-    """
-    df = read_site_input(data_path, site_name, model)
-    cy = climate_year(df["dt"])
-
-    df_pct = calculate_site_percentiles(df, site_name, units="cms")
-    df_pct.to_csv(_site_file(out_path, "percentiles", site_name), index=False)
-
-    df_properties, df_annual_stats = SCHEMES[scheme](
-        df_pct, site_name, start_cy=int(cy.min()), end_cy=int(cy.max()),
-    )
-    df_properties.to_csv(_site_file(out_path, "drought_props", site_name), index=False)
-
-    # Kappa uses threshold-only booleans (no event pooling).
-    df_kappa = site_cohens_kappa(calculate_site_boolean_threshold_only(df_pct), site_name)
-    df_kappa.to_csv(_site_file(out_path, "kappa", site_name), index=False)
-
-    df_spear = site_spearmans(df_pct, site_name)
-    df_spear.to_csv(_site_file(out_path, "spearmans", site_name), index=False)
-
-    df_bias_dist = site_bias_distribution(df_pct, site_name)
-    df_bias_dist.to_csv(_site_file(out_path, "bias_dist", site_name), index=False)
-
-    df_ann_eval = site_annual_signatures(df_annual_stats, site_name)
-    df_ann_eval.to_csv(_site_file(out_path, "ann_eval", site_name), index=False)
+    """Evaluate one site from data_path/input_data and write its checkpoints to out_path."""
+    results = evaluate_site(read_site_input(data_path, site_name, model), site_name, scheme)
+    if write_percentiles:
+        results["percentiles"].to_csv(
+            os.path.join(out_path, "percentiles", f"{site_name}.csv"), index=False
+        )
+    for output in [o for o in OUTPUTS if o != DONE_MARKER] + [DONE_MARKER]:
+        _write_atomic(results[output], _checkpoint(out_path, output, site_name))
 
 
 def _run_site_eval_worker(args: tuple) -> None:
     """Multiprocessing worker: unpacks args and calls run_site_eval."""
-    site_name, data_path, out_path, model, scheme, i = args
-    print(f"site: {site_name} - iteration: {i}", flush=True)
-    run_site_eval(site_name, data_path, model, out_path, scheme)
+    i, n, *run_args = args
+    print(f"site: {run_args[0]} ({i}/{n})", flush=True)
+    run_site_eval(*run_args)
 
 
-def _split_source_metric(df: pd.DataFrame) -> pd.DataFrame:
-    """Split 'mod_kappa'-style column names in `temp` into source='mod', metric='kappa'."""
-    df["source"] = df["temp"].str[:3]
-    df["metric"] = df["temp"].str[4:]
-    return df.drop(columns=["temp"])
-
-
-def write_long_outputs(out_path: str) -> None:
-    """Gather the per-site outputs into kappa_long, spear_bias_dist_long and ann_eval_long."""
-    # ---- Kappa ----
-    df_kappa = gather_data("kappa", out_path)
-    df_kappa_long = _split_source_metric(df_kappa.melt(
-        id_vars=["pct_type", "threshold", "site"],
-        value_vars=["mod_kappa", "mod_classification_accuracy"],
-        var_name="temp",
-        value_name="value",
-    ))
-    df_kappa_long = df_kappa_long[["site", "threshold", "pct_type", "metric", "source", "value"]]
-    df_kappa_long["pct_type"] = df_kappa_long["pct_type"].replace(PCT_TYPE_LABELS)
-    df_kappa_long.to_csv(os.path.join(out_path, "kappa_long.csv"), index=False)
-
-    # ---- Spearman's rho + bias/distribution ----
-    df_spearmans = gather_data("spearmans", out_path)
-    df_spearmans = df_spearmans.drop(columns=["quant_length"], errors="ignore")
-    df_spearmans = df_spearmans.rename(columns={"rho_obs_mod": "mod_rho_obs"})
-    df_spear_long = _split_source_metric(df_spearmans.melt(
-        id_vars=["threshold", "site", "pct_type"],
-        value_vars=["mod_rho_obs", "mod_nse"],
-        var_name="temp",
-        value_name="value",
-    ))
-
-    df_bias = gather_data("bias_dist", out_path)
-    df_bias_long = _split_source_metric(df_bias.melt(
-        id_vars=["thresh", "pct_type", "site"],
-        value_vars=["mod_bias", "mod_pct_bias", "mod_sd_ratio"],
-        var_name="temp",
-        value_name="value",
-    ))
-    df_bias_long = df_bias_long.rename(columns={"thresh": "threshold"})
-
-    df_spear_bias_dist = pd.concat([df_spear_long, df_bias_long], ignore_index=True)
-    df_spear_bias_dist = df_spear_bias_dist[
-        ["site", "threshold", "source", "metric", "pct_type", "value"]
-    ].sort_values(["site", "threshold"]).reset_index(drop=True)
-    df_spear_bias_dist["pct_type"] = df_spear_bias_dist["pct_type"].replace(
-        {f"weibull_{k}": v for k, v in PCT_TYPE_LABELS.items()}
-    )
-    df_spear_bias_dist.to_csv(os.path.join(out_path, "spear_bias_dist_long.csv"), index=False)
-
-    # ---- Annual signature evaluation ----
-    df_ann = gather_data("ann_eval", out_path)
-    value_cols = [c for c in df_ann.columns if c.endswith("_mod")]
-    id_cols = [c for c in df_ann.columns if c not in value_cols]
-    df_ann_long = df_ann.melt(
-        id_vars=id_cols,
-        value_vars=value_cols,
-        var_name="temp",
-        value_name="value",
-    )
-    # Split 'NSE_mod' -> metric='NSE', source='mod'
-    split = df_ann_long["temp"].str.rsplit("_", n=1, expand=True)
-    df_ann_long["metric"] = split[0]
-    df_ann_long["source"] = split[1]
-    df_ann_long = df_ann_long.drop(columns=["temp"])
-    df_ann_long["type"] = df_ann_long["type"].replace(PCT_TYPE_LABELS)
-    df_ann_long.to_csv(os.path.join(out_path, "ann_eval_long.csv"), index=False)
+def combine_outputs(out_path: str, sites: list) -> None:
+    """Concatenate the sites' checkpoints into the combined output files."""
+    for output, sort_cols in OUTPUTS.items():
+        frames = []
+        for site in sorted(sites):
+            path = _checkpoint(out_path, output, site)
+            try:
+                frames.append(pd.read_csv(path, dtype={"site": str}))
+            except pd.errors.EmptyDataError:
+                pass  # e.g. a site without drought events
+        df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        if not df.empty:
+            df = df.sort_values(sort_cols, kind="stable").reset_index(drop=True)
+        df.to_csv(os.path.join(out_path, f"{output}.csv"), index=False)
 
 
 def list_sites(data_path: str) -> list:
@@ -218,12 +186,17 @@ def main(scheme: str = "per_threshold", argv: list = None) -> None:
     parser.add_argument(
         "--out-path",
         default=None,
-        help=f"Path to write output CSVs. Defaults to inst/extdata/<model>{out_suffix}.",
+        help=f"Path to write outputs. Defaults to inst/extdata/<model>{out_suffix}.",
     )
     parser.add_argument(
         "--skip-existing",
         action="store_true",
-        help="Skip sites that already have an ann_eval output file.",
+        help="Resume: skip sites whose checkpoint in <out-path>/sites/ is complete.",
+    )
+    parser.add_argument(
+        "--write-percentiles",
+        action="store_true",
+        help="Also write daily percentiles per site to <out-path>/percentiles/.",
     )
     args = parser.parse_args(argv)
 
@@ -236,31 +209,33 @@ def main(scheme: str = "per_threshold", argv: list = None) -> None:
     # the per-threshold outputs.
     out_path = args.out_path or os.path.join("inst", "extdata", model_name + out_suffix)
 
-    for folder in OUTPUT_DIRS:
-        os.makedirs(os.path.join(out_path, folder), exist_ok=True)
+    for output in OUTPUTS:
+        os.makedirs(os.path.join(out_path, "sites", output), exist_ok=True)
+    if args.write_percentiles:
+        os.makedirs(os.path.join(out_path, "percentiles"), exist_ok=True)
 
-    site_list = list_sites(data_path)
-
-    if args.skip_existing:
-        before = len(site_list)
-        site_list = [
-            s for s in site_list
-            if not os.path.exists(_site_file(out_path, "ann_eval", s))
-        ]
-        print(f"Skipping {before - len(site_list)} existing sites, {len(site_list)} remaining.", flush=True)
+    sites = list_sites(data_path)
 
     if args.ref_sites:
         ref_df = pd.read_csv(args.ref_sites, dtype={"site": str})
         ref_sites = set(ref_df.loc[ref_df["Ref"] == 1, "site"].tolist())
-        site_list = [s for s in site_list if s in ref_sites]
-        print(f"Filtered to {len(site_list)} reference sites.", flush=True)
+        sites = [s for s in sites if s in ref_sites]
+        print(f"Filtered to {len(sites)} reference sites.", flush=True)
+
+    to_run = sites
+    if args.skip_existing:
+        to_run = [
+            s for s in sites if not os.path.exists(_checkpoint(out_path, DONE_MARKER, s))
+        ]
+        print(f"Skipping {len(sites) - len(to_run)} existing sites, {len(to_run)} remaining.", flush=True)
 
     n_workers = int(os.environ.get("HYMED_WORKERS", "16"))
     worker_args = [
-        (s, data_path, out_path, model_name, scheme, i)
-        for i, s in enumerate(site_list, start=1)
+        (i, len(to_run), s, data_path, model_name, out_path, scheme, args.write_percentiles)
+        for i, s in enumerate(to_run, start=1)
     ]
     with multiprocessing.Pool(processes=n_workers) as pool:
         pool.map(_run_site_eval_worker, worker_args)
 
-    write_long_outputs(out_path)
+    # Combine every selected site, including ones completed by an earlier run.
+    combine_outputs(out_path, sites)

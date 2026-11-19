@@ -12,8 +12,12 @@ THRESHOLDS = [5, 10, 20, 30]
 PCT_TYPES = ["weibull_jd_obs", "weibull_jd_mod", "weibull_site_obs", "weibull_site_mod"]
 PCT_FLOW_COLS = ["q_obs", "q_mod", "q_obs", "q_mod"]
 
-# Labels used in the long-format summary outputs.
+# Labels used in the long-format outputs: "jd" percentiles are "variable", "site" "fixed".
 PCT_TYPE_LABELS = {"jd": "variable", "site": "fixed"}
+
+# Column layout of the long-format metric outputs. Annual signature metrics also carry
+# a "measure" column (the annual drought property being compared) after "threshold".
+METRIC_COLS = ["site", "pct_type", "threshold", "metric", "source", "value"]
 
 # Flows below this are treated as zero for the CDPM, by units.
 ZERO_FLOW_CUTOFF = {"cms": 0.00028, "cfs": 0.01}

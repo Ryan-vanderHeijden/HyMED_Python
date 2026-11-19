@@ -8,8 +8,8 @@ Translated from R/site_spearmans.R.
 import numpy as np
 import pandas as pd
 
-from ._util import nse
-from .config import THRESHOLDS
+from ._util import metric_rows, nse
+from .config import METRIC_COLS, PCT_TYPE_LABELS, THRESHOLDS
 
 
 def site_spearmans(
@@ -32,7 +32,9 @@ def site_spearmans(
     Returns
     -------
     pd.DataFrame
-        Columns: rho_obs_mod, quant_length, mod_nse, threshold, site, pct_type.
+        Long format (config.METRIC_COLS): site, pct_type ('variable'/'fixed'), threshold,
+        metric ('rho_obs': Spearman's rho of obs vs mod ranks, 'nse'), source ('mod'), value.
+        Days are those where the *observed* percentile is at or below the threshold.
     """
     if thresholds is None:
         thresholds = THRESHOLDS
@@ -46,8 +48,8 @@ def site_spearmans(
     records = []
 
     for thresh in thresholds:
-        for pct_type in ["weibull_site", "weibull_jd"]:
-            obs_col = f"{pct_type}_obs"
+        for group in ["site", "jd"]:
+            obs_col = f"weibull_{group}_obs"
             df_sub = df[df[obs_col] <= thresh]
 
             if len(df_sub) < 2:
@@ -60,13 +62,7 @@ def site_spearmans(
                 rho = cov / (obs_r.std(ddof=1) * mod_r.std(ddof=1))
                 nse_val = nse(df_sub["q_mod"].values, df_sub["q_obs"].values)
 
-            records.append({
-                "rho_obs_mod": rho,
-                "quant_length": len(df_sub),
-                "mod_nse": nse_val,
-                "threshold": thresh,
-                "site": site_name,
-                "pct_type": pct_type,
-            })
+            key = {"site": site_name, "pct_type": PCT_TYPE_LABELS[group], "threshold": thresh}
+            records += metric_rows(key, {"rho_obs": rho, "nse": nse_val})
 
-    return pd.DataFrame(records)
+    return pd.DataFrame(records, columns=METRIC_COLS)
