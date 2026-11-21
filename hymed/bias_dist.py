@@ -8,6 +8,9 @@ Translated from R/site_bias_dist.R.
 import numpy as np
 import pandas as pd
 
+from ._util import metric_rows
+from .config import METRIC_COLS, PCT_TYPE_LABELS, THRESHOLDS
+
 
 def site_bias_distribution(
     df_pct: pd.DataFrame,
@@ -24,23 +27,25 @@ def site_bias_distribution(
     site_name : str
         Site identifier.
     thresholds : list of int
-        Percentile thresholds. Default: [5, 10, 20, 30].
+        Percentile thresholds. Default: config.THRESHOLDS.
 
     Returns
     -------
     pd.DataFrame
-        Columns: mod_bias, mod_pct_bias, mod_sd_ratio, thresh, pct_type, site.
+        Long format (config.METRIC_COLS): site, pct_type ('variable'/'fixed'), threshold,
+        metric ('bias', 'pct_bias', 'sd_ratio'), source ('mod'), value. Observed and modeled
+        flows are each subset to their own days at or below the threshold.
     """
     if thresholds is None:
-        thresholds = [5, 10, 20, 30]
+        thresholds = THRESHOLDS
 
     df = df_pct.dropna(subset=["q_obs"]).copy()
     records = []
 
     for thresh in thresholds:
-        for pct_type in ["weibull_site", "weibull_jd"]:
-            obs_col = f"{pct_type}_obs"
-            mod_col = f"{pct_type}_mod"
+        for group in ["site", "jd"]:
+            obs_col = f"weibull_{group}_obs"
+            mod_col = f"weibull_{group}_mod"
 
             # Subset to periods where observed is below threshold
             df_obs = df[df[obs_col] <= thresh]
@@ -56,13 +61,9 @@ def site_bias_distribution(
             mod_pct_bias = ((mean_mod - mean_obs) / abs(mean_obs)) * 100
             mod_sd_ratio = sd_mod / sd_obs if sd_obs != 0 else np.nan
 
-            records.append({
-                "mod_bias": mod_bias,
-                "mod_pct_bias": mod_pct_bias,
-                "mod_sd_ratio": mod_sd_ratio,
-                "thresh": thresh,
-                "pct_type": pct_type,
-                "site": site_name,
-            })
+            key = {"site": site_name, "pct_type": PCT_TYPE_LABELS[group], "threshold": thresh}
+            records += metric_rows(
+                key, {"bias": mod_bias, "pct_bias": mod_pct_bias, "sd_ratio": mod_sd_ratio}
+            )
 
-    return pd.DataFrame(records)
+    return pd.DataFrame(records, columns=METRIC_COLS)

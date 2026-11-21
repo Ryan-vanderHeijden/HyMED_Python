@@ -9,15 +9,11 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from ._util import metric_rows, nse
+from .config import METRIC_COLS, PCT_TYPE_LABELS, THRESHOLDS
 
-def _nse(sim: np.ndarray, obs: np.ndarray) -> float:
-    """Nash-Sutcliffe Efficiency."""
-    mask = ~np.isnan(obs) & ~np.isnan(sim)
-    obs, sim = obs[mask], sim[mask]
-    denom = np.sum((obs - obs.mean()) ** 2)
-    if denom == 0:
-        return np.nan
-    return float(1.0 - np.sum((obs - sim) ** 2) / denom)
+# config.METRIC_COLS with the annual drought property being compared.
+ANN_EVAL_COLS = METRIC_COLS[:3] + ["measure"] + METRIC_COLS[3:]
 
 
 def site_annual_signatures(df_annual_stats: pd.DataFrame, site_name: str) -> pd.DataFrame:
@@ -35,8 +31,11 @@ def site_annual_signatures(df_annual_stats: pd.DataFrame, site_name: str) -> pd.
     Returns
     -------
     pd.DataFrame
-        Columns: site, measure, threshold, type, NSE_mod, pearson_mod, spearman_mod,
-                 kendall_mod, r2_mod, mse_mod, rmse_mod, mspe_mod, mae_mod, mean_obs, nmae_mod.
+        Long format (ANN_EVAL_COLS): site, pct_type ('variable'/'fixed'), threshold,
+        measure, metric, source, value. Metrics comparing modeled to observed annual
+        values have source 'mod' (NSE, pearson, spearman, kendall, r2, mse, rmse, mspe,
+        mae, nmae); the observed annual mean is metric 'mean' with source 'obs'.
+        (site, pct_type, threshold, measure) groups with fewer than two years are omitted.
     """
     measure_list = [
         "total_duration_below_threshold",
@@ -57,7 +56,7 @@ def site_annual_signatures(df_annual_stats: pd.DataFrame, site_name: str) -> pd.
     df["source"] = split[2]
 
     # Filter to valid thresholds
-    df = df[df["threshold"].isin([5, 10, 20, 30])]
+    df = df[df["threshold"].isin(THRESHOLDS)]
 
     # Pivot wide: obs and mod as separate columns
     df_wide = df.pivot_table(
@@ -69,7 +68,7 @@ def site_annual_signatures(df_annual_stats: pd.DataFrame, site_name: str) -> pd.
     df_wide.columns.name = None
 
     if "obs" not in df_wide.columns or "mod" not in df_wide.columns:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=ANN_EVAL_COLS)
 
     records = []
     for (site, measure, threshold, type_), grp in df_wide.groupby(
@@ -85,8 +84,8 @@ def site_annual_signatures(df_annual_stats: pd.DataFrame, site_name: str) -> pd.
             continue
 
         mean_obs = float(np.nanmean(obs_m))
-        nse_val = _nse(mod_m, obs_m)
-        pearson = float(np.corrcoef(obs_m, mod_m)[0, 1]) if len(obs_m) > 1 else np.nan
+        nse_val = nse(mod_m, obs_m)
+        pearson = float(np.corrcoef(obs_m, mod_m)[0, 1])
         spearman = float(stats.spearmanr(obs_m, mod_m).statistic)
         kendall = float(stats.kendalltau(obs_m, mod_m).statistic)
         r2 = pearson ** 2 if not np.isnan(pearson) else np.nan
@@ -96,22 +95,24 @@ def site_annual_signatures(df_annual_stats: pd.DataFrame, site_name: str) -> pd.
         mae = float(np.mean(np.abs(obs_m - mod_m)))
         nmae = mae / mean_obs if mean_obs != 0 else np.nan
 
-        records.append({
+        key = {
             "site": site,
-            "measure": measure,
+            "pct_type": PCT_TYPE_LABELS[type_],
             "threshold": threshold,
-            "type": type_,
-            "NSE_mod": nse_val,
-            "pearson_mod": pearson,
-            "spearman_mod": spearman,
-            "kendall_mod": kendall,
-            "r2_mod": r2,
-            "mse_mod": mse,
-            "rmse_mod": rmse,
-            "mspe_mod": mspe,
-            "mae_mod": mae,
-            "mean_obs": mean_obs,
-            "nmae_mod": nmae,
+            "measure": measure,
+        }
+        records += metric_rows(key, {
+            "NSE": nse_val,
+            "pearson": pearson,
+            "spearman": spearman,
+            "kendall": kendall,
+            "r2": r2,
+            "mse": mse,
+            "rmse": rmse,
+            "mspe": mspe,
+            "mae": mae,
+            "nmae": nmae,
         })
+        records += metric_rows(key, {"mean": mean_obs}, source="obs")
 
-    return pd.DataFrame(records)
+    return pd.DataFrame(records, columns=ANN_EVAL_COLS)

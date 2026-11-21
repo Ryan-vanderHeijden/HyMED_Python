@@ -9,7 +9,7 @@ Compare drought-event properties between the two identification methods:
   * "universal" - single 30th-percentile baseline identifies events; each event
                   gets one severity class (5/10/20/30) from its minimum percentile;
                   all metrics measured vs the 30th-percentile baseline
-                  (hymed/calculate_properties_universal.py).
+                  (calculate_site_properties_universal in hymed/calculate_properties.py).
 
 The ``threshold`` column means *identification threshold* in the original output and
 *severity classification* in the universal output. Both share the same event schema,
@@ -22,8 +22,11 @@ Outputs (written to --out):
                                       per site x pct_type, to validate that the two
                                       methods identify the *same* below-30 event set.
 
+Both inputs can be the drought_events.csv written by `hymed run` (with and without
+--universal), or a directory of per-site event CSVs from older runs.
+
 Usage:
-  python compare_methods.py \
+  python scripts/compare_methods.py \
     --orig /home/ryan/data/CONUS_drought_props/obs_ref_only/drought_props \
     --univ /home/ryan/data/CONUS_drought_props/obs_ref_only_universal/obs_drought_props_long.csv \
     --out  /home/ryan/data/CONUS_drought_props/method_comparison

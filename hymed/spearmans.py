@@ -8,14 +8,8 @@ Translated from R/site_spearmans.R.
 import numpy as np
 import pandas as pd
 
-
-def _nse(sim: np.ndarray, obs: np.ndarray) -> float:
-    """Nash-Sutcliffe Efficiency."""
-    mask = ~np.isnan(obs) & ~np.isnan(sim)
-    obs, sim = obs[mask], sim[mask]
-    if len(obs) == 0 or np.sum((obs - obs.mean()) ** 2) == 0:
-        return np.nan
-    return float(1.0 - np.sum((obs - sim) ** 2) / np.sum((obs - obs.mean()) ** 2))
+from ._util import metric_rows, nse
+from .config import METRIC_COLS, PCT_TYPE_LABELS, THRESHOLDS
 
 
 def site_spearmans(
@@ -33,15 +27,17 @@ def site_spearmans(
     site_name : str
         Site identifier.
     thresholds : list of int
-        Percentile thresholds. Default: [5, 10, 20, 30].
+        Percentile thresholds. Default: config.THRESHOLDS.
 
     Returns
     -------
     pd.DataFrame
-        Columns: rho_obs_mod, quant_length, mod_nse, threshold, site, pct_type.
+        Long format (config.METRIC_COLS): site, pct_type ('variable'/'fixed'), threshold,
+        metric ('rho_obs': Spearman's rho of obs vs mod ranks, 'nse'), source ('mod'), value.
+        Days are those where the *observed* percentile is at or below the threshold.
     """
     if thresholds is None:
-        thresholds = [5, 10, 20, 30]
+        thresholds = THRESHOLDS
 
     df = df_pct.dropna(subset=["q_obs"]).copy()
 
@@ -52,11 +48,9 @@ def site_spearmans(
     records = []
 
     for thresh in thresholds:
-        for pct_type in ["weibull_site", "weibull_jd"]:
-            obs_col = f"{pct_type}_obs"
-            df["pct_value_obs"] = df[obs_col]
-
-            df_sub = df[df["pct_value_obs"] <= thresh].copy()
+        for group in ["site", "jd"]:
+            obs_col = f"weibull_{group}_obs"
+            df_sub = df[df[obs_col] <= thresh]
 
             if len(df_sub) < 2:
                 rho = np.nan
@@ -66,15 +60,9 @@ def site_spearmans(
                 mod_r = df_sub["mod_rank"].values
                 cov = np.cov(obs_r, mod_r, ddof=1)[0, 1]
                 rho = cov / (obs_r.std(ddof=1) * mod_r.std(ddof=1))
-                nse_val = _nse(df_sub["q_mod"].values, df_sub["q_obs"].values)
+                nse_val = nse(df_sub["q_mod"].values, df_sub["q_obs"].values)
 
-            records.append({
-                "rho_obs_mod": rho,
-                "quant_length": len(df_sub),
-                "mod_nse": nse_val,
-                "threshold": thresh,
-                "site": site_name,
-                "pct_type": pct_type,
-            })
+            key = {"site": site_name, "pct_type": PCT_TYPE_LABELS[group], "threshold": thresh}
+            records += metric_rows(key, {"rho_obs": rho, "nse": nse_val})
 
-    return pd.DataFrame(records)
+    return pd.DataFrame(records, columns=METRIC_COLS)

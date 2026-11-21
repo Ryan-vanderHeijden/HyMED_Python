@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hymed"
+version = "1.0.0"
+description = "Hydrologic Model Evaluation for Drought: Python translation of the HyMED R package"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Ryan van der Heijden" }]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "pandas>=1.5",
+    "scipy>=1.9",
+    "scikit-learn",
+]
+
+[project.optional-dependencies]
+# Study-specific data preparation and comparison scripts in scripts/.
+scripts = ["pyarrow", "tqdm", "matplotlib"]
+dev = ["pytest"]
+
+[project.scripts]
+hymed = "hymed.cli:main"
+
+[tool.setuptools]
+packages = ["hymed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
